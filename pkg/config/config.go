@@ -1,3 +1,4 @@
+// Package config는 애플리케이션 설정을 관리하는 패키지입니다.
 package config
 
 import (
@@ -6,182 +7,102 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/spf13/viper"
 )
 
-// Config 구성 인터페이스
+// Config 인터페이스는 설정 값에 액세스하기 위한 메서드를 정의합니다.
 type Config interface {
-	Get(key string) interface{}
 	GetString(key string) string
 	GetInt(key string) int
 	GetBool(key string) bool
-	GetStringMap(key string) map[string]interface{}
+	GetFloat64(key string) float64
 	GetStringSlice(key string) []string
+	GetStringMap(key string) map[string]interface{}
 	GetAll() map[string]interface{}
-	IsSet(key string) bool
 }
 
-// 설정 저장소
-type config struct {
-	data map[string]interface{}
+// viperConfig는 viper를 사용하여 Config 인터페이스를 구현합니다.
+type viperConfig struct {
+	v *viper.Viper
 }
 
-// Load 설정 파일 로드
+// GetString은 문자열 설정 값을 반환합니다.
+func (c *viperConfig) GetString(key string) string {
+	return c.v.GetString(key)
+}
+
+// GetInt는 정수 설정 값을 반환합니다.
+func (c *viperConfig) GetInt(key string) int {
+	return c.v.GetInt(key)
+}
+
+// GetBool은 불리언 설정 값을 반환합니다.
+func (c *viperConfig) GetBool(key string) bool {
+	return c.v.GetBool(key)
+}
+
+// GetFloat64는 부동 소수점 설정 값을 반환합니다.
+func (c *viperConfig) GetFloat64(key string) float64 {
+	return c.v.GetFloat64(key)
+}
+
+// GetStringSlice는 문자열 슬라이스 설정 값을 반환합니다.
+func (c *viperConfig) GetStringSlice(key string) []string {
+	return c.v.GetStringSlice(key)
+}
+
+// GetStringMap은 맵 설정 값을 반환합니다.
+func (c *viperConfig) GetStringMap(key string) map[string]interface{} {
+	return c.v.GetStringMap(key)
+}
+
+// GetAll은 전체 설정을 맵으로 반환합니다.
+func (c *viperConfig) GetAll() map[string]interface{} {
+	return c.v.AllSettings()
+}
+
+// 설정 디렉토리 경로
+const configDir = "configs"
+
+// Load는 지정된 서비스 이름에 해당하는 설정 파일을 로드합니다.
 func Load(serviceName string) (Config, error) {
-	// 환경 변수에서 환경 가져오기 (기본값: dev)
-	env := os.Getenv("ENV")
+	v := viper.New()
+
+	// 환경 변수 설정
+	env := os.Getenv("APP_ENV")
 	if env == "" {
-		env = "dev"
+		env = "dev" // 기본 환경은 dev
 	}
 
-	// 현재 디렉토리 또는 SEMO_CONFIG_DIR 환경 변수에서 설정 디렉토리 결정
-	configDir := os.Getenv("SEMO_CONFIG_DIR")
-	if configDir == "" {
-		// 실행 파일 기준 상위 디렉토리에서 configs 디렉토리 찾기
-		execPath, err := os.Executable()
-		if err != nil {
-			return nil, fmt.Errorf("실행 파일 경로를 찾을 수 없습니다: %w", err)
+	// 설정 파일 확장자 및 유형 설정
+	v.SetConfigType("yaml")
+
+	// 환경 변수 바인딩 설정
+	v.SetEnvPrefix(strings.ToUpper(serviceName))
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// 설정 파일 경로 설정
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		// 기본 경로는 현재 디렉토리의 configs/{env}/{service}.yaml
+		configPath = filepath.Join(configDir, env)
+	}
+
+	// 설정 파일 이름 설정
+	configName := serviceName
+	v.SetConfigName(configName)
+	v.AddConfigPath(configPath)
+
+	// 설정 파일 로드
+	if err := v.ReadInConfig(); err != nil {
+		// configs/example 디렉토리에서 예제 설정 파일 시도
+		v.SetConfigName(configName)
+		v.AddConfigPath(filepath.Join(configDir, "example"))
+		if err := v.ReadInConfig(); err != nil {
+			return nil, fmt.Errorf("설정 파일 로드 실패: %w", err)
 		}
-		baseDir := filepath.Dir(execPath)
-		configDir = filepath.Join(baseDir, "configs")
-
-		// configs 디렉토리가 없으면 상위 디렉토리 시도
-		if _, err := os.Stat(configDir); os.IsNotExist(err) {
-			configDir = filepath.Join(baseDir, "..", "configs")
-		}
 	}
 
-	// 환경별 설정 파일 경로 생성
-	configPath := filepath.Join(configDir, env, fmt.Sprintf("%s.yaml", serviceName))
-
-	// 설정 파일 읽기
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("설정 파일을 읽을 수 없습니다 (%s): %w", configPath, err)
-	}
-
-	// 환경 변수 치환
-	content := os.ExpandEnv(string(data))
-
-	// YAML 파싱
-	var cfg map[string]interface{}
-	if err := yaml.Unmarshal([]byte(content), &cfg); err != nil {
-		return nil, fmt.Errorf("YAML 파싱 오류: %w", err)
-	}
-
-	return &config{data: cfg}, nil
-}
-
-// Get 설정값 가져오기
-func (c *config) Get(key string) interface{} {
-	keys := strings.Split(key, ".")
-	val := c.findValue(keys, c.data)
-	return val
-}
-
-// GetString 문자열 설정값 가져오기
-func (c *config) GetString(key string) string {
-	val := c.Get(key)
-	if val == nil {
-		return ""
-	}
-	if str, ok := val.(string); ok {
-		return str
-	}
-	return fmt.Sprintf("%v", val)
-}
-
-// GetInt 정수 설정값 가져오기
-func (c *config) GetInt(key string) int {
-	val := c.Get(key)
-	if val == nil {
-		return 0
-	}
-	switch v := val.(type) {
-	case int:
-		return v
-	case int64:
-		return int(v)
-	case float64:
-		return int(v)
-	default:
-		return 0
-	}
-}
-
-// GetBool 불리언 설정값 가져오기
-func (c *config) GetBool(key string) bool {
-	val := c.Get(key)
-	if val == nil {
-		return false
-	}
-	if b, ok := val.(bool); ok {
-		return b
-	}
-	return false
-}
-
-// GetStringMap 맵 설정값 가져오기
-func (c *config) GetStringMap(key string) map[string]interface{} {
-	val := c.Get(key)
-	if val == nil {
-		return nil
-	}
-	if m, ok := val.(map[string]interface{}); ok {
-		return m
-	}
-	return nil
-}
-
-// GetStringSlice 문자열 배열 설정값 가져오기
-func (c *config) GetStringSlice(key string) []string {
-	val := c.Get(key)
-	if val == nil {
-		return nil
-	}
-	if slice, ok := val.([]interface{}); ok {
-		result := make([]string, 0, len(slice))
-		for _, v := range slice {
-			if s, ok := v.(string); ok {
-				result = append(result, s)
-			} else {
-				result = append(result, fmt.Sprintf("%v", v))
-			}
-		}
-		return result
-	}
-	return nil
-}
-
-// GetAll 모든 설정값 가져오기
-func (c *config) GetAll() map[string]interface{} {
-	return c.data
-}
-
-// IsSet 설정값이 존재하는지 확인
-func (c *config) IsSet(key string) bool {
-	return c.Get(key) != nil
-}
-
-// findValue 중첩된 맵에서 값 찾기
-func (c *config) findValue(keys []string, data map[string]interface{}) interface{} {
-	if len(keys) == 0 {
-		return nil
-	}
-
-	key := keys[0]
-	val, ok := data[key]
-	if !ok {
-		return nil
-	}
-
-	if len(keys) == 1 {
-		return val
-	}
-
-	if m, ok := val.(map[string]interface{}); ok {
-		return c.findValue(keys[1:], m)
-	}
-
-	return nil
+	return &viperConfig{v: v}, nil
 }
