@@ -1,4 +1,4 @@
-module github.com/your-org/semo-backend-monorepo/pkg
+module github.com/wekeepgrowing/semo-backend-monorepo/pkg
 
 go 1.23.0
 

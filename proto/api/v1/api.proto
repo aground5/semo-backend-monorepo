@@ -4,7 +4,7 @@ package semo.api.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/your-org/semo-backend-monorepo/proto/api/v1;apiv1";
+option go_package = "github.com/wekeepgrowing/semo-backend-monorepo/proto/api/v1;apiv1";
 
 service ApiService {
   rpc GetUser(GetUserRequest) returns (GetUserResponse) {}

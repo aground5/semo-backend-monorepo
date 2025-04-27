@@ -1,4 +1,4 @@
-module github.com/your-org/semo-backend-monorepo/services/notification
+module github.com/wekeepgrowing/semo-backend-monorepo/services/notification
 
 go 1.23.0
 

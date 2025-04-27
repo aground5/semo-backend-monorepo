@@ -1,4 +1,4 @@
-module github.com/your-org/semo-backend-monorepo/tools
+module github.com/wekeepgrowing/semo-backend-monorepo/tools
 
 go 1.23
 

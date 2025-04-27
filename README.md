@@ -20,7 +20,7 @@
 
 ```bash
 # 프로젝트 클론
-git clone https://github.com/your-org/semo-backend-monorepo.git
+git clone https://github.com/wekeepgrowing/semo-backend-monorepo.git
 cd semo-backend-monorepo
 
 # 개발 환경 설정

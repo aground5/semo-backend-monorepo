@@ -59,7 +59,7 @@ package repository
 import (
     "context"
     
-    "github.com/your-org/semo-backend-monorepo/services/api/internal/domain/entity"
+    "github.com/wekeepgrowing/semo-backend-monorepo/services/api/internal/domain/entity"
 )
 
 type UserRepository interface {

@@ -18,8 +18,8 @@
 
 ```go
 import (
-    "github.com/your-org/semo-backend-monorepo/pkg/logger"
-    "github.com/your-org/semo-backend-monorepo/pkg/errors"
+    "github.com/wekeepgrowing/semo-backend-monorepo/pkg/logger"
+    "github.com/wekeepgrowing/semo-backend-monorepo/pkg/errors"
 )
 
 func main() {

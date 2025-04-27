@@ -73,7 +73,7 @@ package repository
 import (
     "context"
     
-    "github.com/your-org/semo-backend-monorepo/services/notification/internal/domain/entity"
+    "github.com/wekeepgrowing/semo-backend-monorepo/services/notification/internal/domain/entity"
 )
 
 type NotificationRepository interface {

@@ -1,4 +1,4 @@
-module github.com/your-org/semo-backend-monorepo/services/api
+module github.com/wekeepgrowing/semo-backend-monorepo/services/api
 
 go 1.23.0
 
