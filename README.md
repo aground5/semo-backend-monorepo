@@ -69,11 +69,3 @@ make lint
 # 빌드
 make build
 ```
-
-## 기여 가이드
-
-기여 방법에 대한 자세한 내용은 [기여 가이드](docs/guidelines/CONTRIBUTING.md)를 참조하세요.
-
-## 라이센스
-
-[MIT License](LICENSE) 
