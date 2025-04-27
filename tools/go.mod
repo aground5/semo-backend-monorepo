@@ -1,9 +1,13 @@
 module github.com/your-org/semo-backend-monorepo/tools
 
-go 1.21
+go 1.23
 
 require (
-	github.com/golang/protobuf v1.5.3
+	github.com/golang/protobuf v1.5.4
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.3.0
-	google.golang.org/protobuf v1.31.0
-) 
+)
+
+require (
+	github.com/google/go-cmp v0.6.0 // indirect
+	google.golang.org/protobuf v1.33.0 // indirect
+)

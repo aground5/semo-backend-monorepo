@@ -1,4 +1,4 @@
-.PHONY: setup run build test lint proto-gen docker-all docker-notification docker-api docker-auth
+.PHONY: setup run build test lint proto-gen docker-all docker-notification docker-api docker-auth mock
 
 # 기본 명령어
 all: setup build
@@ -11,6 +11,7 @@ setup:
 	cd services/api && go mod download
 	cd services/auth && go mod download
 	cd tools && go mod download
+	go install github.com/vektra/mockery/v2@latest
 
 # 모든 서비스 실행
 run:
@@ -46,6 +47,11 @@ test:
 lint:
 	@echo "코드 린트 검사를 실행합니다..."
 	golangci-lint run ./...
+
+# Mock 생성
+mock:
+	@echo "Mock 객체를 생성합니다..."
+	mockery --config=.mockery.yaml
 
 # Docker 이미지 빌드
 docker-all: docker-notification docker-api docker-auth
