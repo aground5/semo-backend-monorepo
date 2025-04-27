@@ -1,8 +1,8 @@
 package config
 
 import (
-	"github.com/your-org/semo-backend-monorepo/pkg/config"
-	"github.com/your-org/semo-backend-monorepo/pkg/logger"
+	"github.com/wekeepgrowing/semo-backend-monorepo/pkg/config"
+	"github.com/wekeepgrowing/semo-backend-monorepo/pkg/logger"
 	"go.uber.org/zap"
 )
 

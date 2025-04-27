@@ -7,10 +7,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/your-org/semo-backend-monorepo/services/auth/internal/config"
-	"github.com/your-org/semo-backend-monorepo/services/auth/internal/infrastructure/db"
-	"github.com/your-org/semo-backend-monorepo/services/auth/internal/infrastructure/grpc"
-	"github.com/your-org/semo-backend-monorepo/services/auth/internal/infrastructure/http"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/config"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/infrastructure/db"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/infrastructure/grpc"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/infrastructure/http"
 	"go.uber.org/zap"
 )
 

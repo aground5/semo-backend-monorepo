@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/your-org/semo-backend-monorepo/pkg/messaging"
-	"github.com/your-org/semo-backend-monorepo/services/notification/internal/domain/entity"
+	"github.com/wekeepgrowing/semo-backend-monorepo/pkg/messaging"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/notification/internal/domain/entity"
 )
 
 // NotificationPublisher 알림 발행 인터페이스
