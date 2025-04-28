@@ -61,7 +61,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, params dto.RegisterParams) 
 	}
 
 	// 4. 비밀번호 해싱
-	hashedPassword, err := HashPassword(params.Password)
+	hashedPassword, salt, err := HashPassword(params.Password)
 	if err != nil {
 		return nil, fmt.Errorf("비밀번호 해싱 실패: %w", err)
 	}
@@ -76,6 +76,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, params dto.RegisterParams) 
 	user := &entity.User{
 		Email:         params.Email,
 		Password:      hashedPassword,
+		Salt:          salt,
 		Username:      username,
 		Name:          username,
 		EmailVerified: false,
@@ -108,7 +109,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, params dto.RegisterParams) 
 		}
 
 		auditLog := &entity.AuditLog{
-			UserID:  user.ID,
+			UserID:  &user.ID,
 			Type:    "USER_REGISTERED",
 			Content: content,
 		}
@@ -540,7 +541,7 @@ func (uc *SessionUseCase) findOrCreateUser(ctx context.Context, email string) (*
 	}
 
 	// 사용자 없음, 새로 생성
-	username := extractUsernameFromEmail(email)
+	username := ExtractUsernameFromEmail(email)
 
 	newUser := &entity.User{
 		Email:         email,
@@ -599,12 +600,6 @@ func (uc *SessionUseCase) logLoginAttempt(ctx context.Context, userID, email, lo
 	if err := uc.auditRepository.Create(context.Background(), auditLog); err != nil {
 		uc.logger.Error("로그인 시도 감사 로그 저장 실패", zap.Error(err))
 	}
-}
-
-// extractUsernameFromEmail 이메일에서 사용자 이름 추출
-func extractUsernameFromEmail(email string) string {
-	parts := regexp.MustCompile("@").Split(email, 2)
-	return parts[0]
 }
 
 // LoginWithPassword 비밀번호로 로그인
@@ -680,18 +675,4 @@ func validatePasswordStrength(password string) error {
 	}
 
 	return nil
-}
-
-// ExtractUsernameFromEmail 이메일에서 사용자 이름 추출
-func ExtractUsernameFromEmail(email string) string {
-	parts := regexp.MustCompile("@").Split(email, 2)
-	return parts[0]
-}
-
-// HashPassword 비밀번호 해싱
-func HashPassword(password string) (string, error) {
-	// 실제 해싱 로직 구현
-	// 예: bcrypt 등 사용
-	hashedPassword := password + "_hashed" // 예시용 간단 구현
-	return hashedPassword, nil
 }

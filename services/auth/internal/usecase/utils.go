@@ -12,8 +12,6 @@ import (
 )
 
 // GenerateRandomString은 지정된 길이의 무작위 문자열을 생성합니다.
-// 이 함수는 이미 선언되어 있으므로 주석 처리하고 기존 구현을 사용합니다.
-/*
 func GenerateRandomString(length int) string {
 	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	b := make([]byte, length)
@@ -23,7 +21,6 @@ func GenerateRandomString(length int) string {
 	}
 	return string(b)
 }
-*/
 
 // GenerateRandomCode는 지정된 길이의 무작위 코드를 생성합니다.
 func GenerateRandomCode(length int) string {

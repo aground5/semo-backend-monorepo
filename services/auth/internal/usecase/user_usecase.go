@@ -67,7 +67,7 @@ func (uc *UserUseCase) UpdateUserProfile(ctx context.Context, userID string, nam
 	}
 
 	// 4. 프로필 업데이트 감사 로그 기록
-	uc.logUserActivity(ctx, userID, "PROFILE_UPDATED", map[string]interface{}{
+	uc.logUserActivity(ctx, userID, entity.AuditLogTypeUserProfileUpdate, map[string]interface{}{
 		"field": "name",
 		"value": name,
 	})
@@ -89,7 +89,7 @@ func (uc *UserUseCase) ChangePassword(ctx context.Context, userID, currentPasswo
 	// 2. 현재 비밀번호 검증
 	if !uc.verifyPassword(user.Password, currentPassword) {
 		// 비밀번호 변경 실패 감사 로그 기록
-		uc.logUserActivity(ctx, userID, "PASSWORD_CHANGE_FAILED", map[string]interface{}{
+		uc.logUserActivity(ctx, userID, entity.AuditLogTypePasswordChangeFailed, map[string]interface{}{
 			"reason": "incorrect_current_password",
 		})
 		return fmt.Errorf("현재 비밀번호가 일치하지 않습니다")
@@ -101,7 +101,7 @@ func (uc *UserUseCase) ChangePassword(ctx context.Context, userID, currentPasswo
 	}
 
 	// 4. 새 비밀번호 해싱
-	hashedPassword, err := hashPassword(newPassword)
+	hashedPassword, _, err := HashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("비밀번호 해싱 실패: %w", err)
 	}
@@ -122,7 +122,7 @@ func (uc *UserUseCase) ChangePassword(ctx context.Context, userID, currentPasswo
 	}
 
 	// 7. 비밀번호 변경 성공 감사 로그 기록
-	uc.logUserActivity(ctx, userID, "PASSWORD_CHANGED", nil)
+	uc.logUserActivity(ctx, userID, entity.AuditLogTypePasswordChange, nil)
 
 	return nil
 }
@@ -144,7 +144,7 @@ func (uc *UserUseCase) RequestPasswordReset(ctx context.Context, email string) e
 	// 실제 구현에서는 토큰 생성 및 이메일 발송 로직 필요
 
 	// 3. 비밀번호 재설정 요청 감사 로그 기록
-	uc.logUserActivity(ctx, user.ID, "PASSWORD_RESET_REQUESTED", map[string]interface{}{
+	uc.logUserActivity(ctx, user.ID, entity.AuditLogTypePasswordResetRequested, map[string]interface{}{
 		"email": email,
 	})
 
@@ -154,7 +154,7 @@ func (uc *UserUseCase) RequestPasswordReset(ctx context.Context, email string) e
 // 보조 함수들
 
 // logUserActivity 사용자 활동 감사 로그 기록
-func (uc *UserUseCase) logUserActivity(ctx context.Context, userID, activityType string, details map[string]interface{}) {
+func (uc *UserUseCase) logUserActivity(ctx context.Context, userID string, activityType entity.AuditLogType, details map[string]interface{}) {
 	// IP와 User-Agent 정보 추출
 	clientIP := getContextValue(ctx, "client_ip")
 	userAgent := getContextValue(ctx, "user_agent")
@@ -167,17 +167,13 @@ func (uc *UserUseCase) logUserActivity(ctx context.Context, userID, activityType
 	details["user_agent"] = userAgent
 
 	// 감사 로그 생성
-	auditLog := &entity.AuditLog{
-		UserID:  userID,
-		Type:    activityType,
-		Content: details,
-	}
+	auditLog := entity.NewAuditLog(&userID, activityType, details)
 
 	// 감사 로그 저장
 	if err := uc.auditRepository.Create(context.Background(), auditLog); err != nil {
 		uc.logger.Error("감사 로그 저장 실패",
 			zap.String("user_id", userID),
-			zap.String("activity", activityType),
+			zap.String("activity", string(activityType)),
 			zap.Error(err),
 		)
 	}
@@ -208,12 +204,4 @@ func getContextValue(ctx context.Context, key string) string {
 		return "unknown"
 	}
 	return strValue
-}
-
-// hashPassword 비밀번호 해싱
-func hashPassword(password string) (string, error) {
-	// 실제 해싱 로직 구현 (예: bcrypt.GenerateFromPassword)
-	// 이 예제에서는 단순화를 위해 간단한 구현
-	hashedPassword := password + "_hashed"
-	return hashedPassword, nil
 }

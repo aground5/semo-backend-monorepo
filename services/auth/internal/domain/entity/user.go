@@ -12,7 +12,7 @@ type User struct {
 	Name              string
 	Email             string
 	Password          string
-	Hash              string
+	Salt              string
 	EmailVerified     bool
 	AccountStatus     string
 	LastLoginAt       *time.Time
@@ -22,7 +22,7 @@ type User struct {
 }
 
 // NewUser 사용자 생성 팩토리 함수
-func NewUser(username, name, email, password, hash string) (*User, error) {
+func NewUser(username, name, email, password, salt string) (*User, error) {
 	if username == "" {
 		return nil, errors.New("사용자 이름은 필수입니다")
 	}
@@ -31,8 +31,8 @@ func NewUser(username, name, email, password, hash string) (*User, error) {
 		return nil, errors.New("이메일은 필수입니다")
 	}
 
-	if password == "" || hash == "" {
-		return nil, errors.New("비밀번호와 해시는 필수입니다")
+	if password == "" || salt == "" {
+		return nil, errors.New("비밀번호와 솔트는 필수입니다")
 	}
 
 	return &User{
@@ -40,7 +40,7 @@ func NewUser(username, name, email, password, hash string) (*User, error) {
 		Name:             name,
 		Email:            email,
 		Password:         password,
-		Hash:             hash,
+		Salt:             salt,
 		EmailVerified:    false,
 		AccountStatus:    "active",
 		FailedLoginCount: 0,
@@ -71,14 +71,14 @@ func (u *User) IncrementFailedLogin() {
 }
 
 // ChangePassword 비밀번호 변경
-func (u *User) ChangePassword(newPassword, newHash string) error {
-	if newPassword == "" || newHash == "" {
-		return errors.New("새 비밀번호와 해시는 필수입니다")
+func (u *User) ChangePassword(newPassword, newSalt string) error {
+	if newPassword == "" || newSalt == "" {
+		return errors.New("새 비밀번호와 솔트는 필수입니다")
 	}
 
 	now := time.Now()
 	u.Password = newPassword
-	u.Hash = newHash
+	u.Salt = newSalt
 	u.PasswordChangedAt = &now
 
 	return nil

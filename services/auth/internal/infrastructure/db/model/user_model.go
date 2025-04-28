@@ -13,7 +13,7 @@ type UserModel struct {
 	Name              string     `gorm:"size:100;not null;default:''" json:"name"`
 	Email             string     `gorm:"size:250;not null;uniqueIndex" json:"email"`
 	Password          string     `gorm:"size:250;not null" json:"password"`
-	Hash              string     `gorm:"size:250;not null" json:"hash"`
+	Salt              string     `gorm:"size:250;not null" json:"salt"`
 	EmailVerified     bool       `gorm:"default:false" json:"email_verified"`
 	AccountStatus     string     `gorm:"size:50;default:'active'" json:"account_status"`
 	LastLoginAt       *time.Time `json:"last_login_at,omitempty"`
