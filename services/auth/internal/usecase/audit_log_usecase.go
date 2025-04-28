@@ -46,31 +46,11 @@ func (uc *AuditLogUseCase) AddLog(ctx context.Context, logType entity.AuditLogTy
 
 // GetUserLogs 특정 사용자의 감사 로그 조회
 func (uc *AuditLogUseCase) GetUserLogs(ctx context.Context, userID string, page, limit int) ([]*entity.AuditLog, error) {
-	// 사용자 ID로 필터링
-	filter := map[string]interface{}{
-		"user_id": userID,
-	}
-
 	// 로그 조회
-	logs, err := uc.auditRepository.FindByFilter(ctx, filter, page, limit)
+	logs, _, err := uc.auditRepository.ListByUserID(ctx, userID, page, limit)
 	if err != nil {
 		uc.logger.Error("사용자 감사 로그 조회 실패",
 			zap.String("userID", userID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	return logs, nil
-}
-
-// GetLogs 감사 로그 조회 (필터링 가능)
-func (uc *AuditLogUseCase) GetLogs(ctx context.Context, filter map[string]interface{}, page, limit int) ([]*entity.AuditLog, error) {
-	// 로그 조회
-	logs, err := uc.auditRepository.FindByFilter(ctx, filter, page, limit)
-	if err != nil {
-		uc.logger.Error("감사 로그 조회 실패",
-			zap.Any("filter", filter),
 			zap.Error(err),
 		)
 		return nil, err

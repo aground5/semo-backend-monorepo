@@ -13,7 +13,4 @@ type AuditLogUseCase interface {
 
 	// GetUserLogs 특정 사용자의 감사 로그 조회
 	GetUserLogs(ctx context.Context, userID string, page, limit int) ([]*entity.AuditLog, error)
-
-	// GetLogs 감사 로그 조회 (필터링 가능)
-	GetLogs(ctx context.Context, filter map[string]interface{}, page, limit int) ([]*entity.AuditLog, error)
 }
