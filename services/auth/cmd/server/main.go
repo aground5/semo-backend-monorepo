@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/adapter/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/config"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/infrastructure/db"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/infrastructure/grpc"
@@ -37,8 +38,11 @@ func main() {
 	}
 	defer infrastructure.Close()
 
-	// 4. 유스케이스 초기화
-	useCases := appinit.NewUseCases(infrastructure.Repositories, logger)
+	// 4. 레포지토리 초기화
+	repositories := repository.InitRepositories(infrastructure.DB, infrastructure.RedisClient, infrastructure.SMTPClient)
+
+	// 5. 유스케이스 초기화
+	useCases := appinit.NewUseCases(repositories, logger)
 
 	// 나중에 사용하기 위해 전역 변수에 등록 또는 핸들러에 직접 주입
 	// TODO: 추후 HTTP/gRPC 핸들러에 useCases 객체를 전달하는 로직 추가

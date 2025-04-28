@@ -1,12 +1,10 @@
 package mail
 
 import (
-	"context"
 	"fmt"
 	"time"
 
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/config"
-	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/domain/repository"
 	"go.uber.org/zap"
 )
 
@@ -211,37 +209,4 @@ func (s *EmailTemplateService) GenerateVerificationEmailHTML(name, token string)
 </html>`, name, verificationLink, token, s.companyName, time.Now().Year(), s.companyName, s.supportEmail, s.supportEmail)
 
 	return emailHTML
-}
-
-// EmailService 이메일 서비스 (템플릿과 전송 조합)
-type EmailService struct {
-	templateService *EmailTemplateService
-	mailRepository  repository.MailRepository
-}
-
-// NewEmailService 이메일 서비스 생성
-func NewEmailService(templateService *EmailTemplateService, mailRepo repository.MailRepository) *EmailService {
-	return &EmailService{
-		templateService: templateService,
-		mailRepository:  mailRepo,
-	}
-}
-
-// SendWelcomeEmail 환영 이메일 발송
-func (s *EmailService) SendWelcomeEmail(ctx context.Context, email, username, code string) error {
-	subject := fmt.Sprintf("%s님, 환영합니다!", username)
-	htmlBody := s.templateService.GenerateWelcomeEmailHTML(username, code)
-	if htmlBody == "" {
-		return fmt.Errorf("이메일 템플릿 생성 실패")
-	}
-
-	return s.mailRepository.SendMail(ctx, email, subject, htmlBody)
-}
-
-// SendVerificationEmail 인증 이메일 발송
-func (s *EmailService) SendVerificationEmail(ctx context.Context, email, name, token string) error {
-	subject := "이메일 주소 인증"
-	htmlBody := s.templateService.GenerateVerificationEmailHTML(name, token)
-
-	return s.mailRepository.SendMail(ctx, email, subject, htmlBody)
 }

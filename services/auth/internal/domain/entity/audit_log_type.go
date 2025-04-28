@@ -10,8 +10,12 @@ const (
 	AuditLogTypeLoginFailed         AuditLogType = "LOGIN_FAILED"          // 로그인 시도 실패
 	AuditLogTypeLogoutSuccess       AuditLogType = "LOGOUT_SUCCESS"        // 사용자 로그아웃 성공
 	AuditLogTypeAutoLoginSuccess    AuditLogType = "AUTO_LOGIN_SUCCESS"    // 자동 로그인 성공
+	AuditLogTypeAutoLoginFailed     AuditLogType = "AUTO_LOGIN_FAILED"     // 자동 로그인 실패
 	AuditLogTypeRefreshTokenSuccess AuditLogType = "REFRESH_TOKEN_SUCCESS" // 토큰 갱신 성공
 	AuditLogTypeRefreshTokenInvalid AuditLogType = "REFRESH_TOKEN_INVALID" // 토큰 갱신 실패
+	AuditLogTypeTokenMisuse         AuditLogType = "TOKEN_MISUSE"          // 토큰 잘못된 사용
+	AuditLogTypeTokenRefreshed      AuditLogType = "TOKEN_REFRESHED"       // 토큰 갱신됨
+	AuditLogTypeLogout              AuditLogType = "LOGOUT"                // 사용자 로그아웃
 
 	// 사용자 관리 감사 로그 유형
 	AuditLogTypeUserRegistered     AuditLogType = "USER_REGISTERED"      // 신규 사용자 등록
@@ -25,6 +29,7 @@ const (
 	AuditLogType2FAEnabled  AuditLogType = "2FA_ENABLED"  // 2단계 인증 활성화
 	AuditLogType2FADisabled AuditLogType = "2FA_DISABLED" // 2단계 인증 비활성화
 	AuditLogType2FAVerified AuditLogType = "2FA_VERIFIED" // 2단계 인증 코드 확인 성공
+	AuditLogType2FASuccess  AuditLogType = "2FA_SUCCESS"  // 2단계 인증 성공
 
 	// 보안 관련 감사 로그 유형
 	AuditLogTypeSecurityAlert  AuditLogType = "SECURITY_ALERT"   // 보안 경고 생성

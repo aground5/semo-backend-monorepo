@@ -5,9 +5,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/adapter/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/config"
-	domainrepo "github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/domain/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/infrastructure/mail"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -17,9 +15,8 @@ import (
 type Infrastructure struct {
 	DB             *gorm.DB
 	RedisClient    *redis.Client
-	Repositories   *domainrepo.Repositories
 	EmailTemplates *mail.EmailTemplateService
-	EmailService   *mail.EmailService
+	SMTPClient     *mail.SMTPClient
 }
 
 // NewInfrastructure 인프라스트럭처 초기화
@@ -62,10 +59,13 @@ func NewInfrastructure(cfg *config.Config) (*Infrastructure, error) {
 		return nil, fmt.Errorf("Redis 연결 실패: %w", err)
 	}
 
-	// Redis 레포지토리 초기화
-	cacheRepo := NewRedisRepository(infrastructure.RedisClient)
+	// 이메일 템플릿 서비스 초기화
+	infrastructure.EmailTemplates = mail.NewEmailTemplateService(
+		cfg.Service.BaseURL,
+		cfg.Email.SenderEmail,
+		cfg.Service.Name,
+	)
 
-	// SMTP 메일 설정
 	smtpConfig := mail.SMTPConfig{
 		Host:     cfg.Email.SMTPHost,
 		Port:     cfg.Email.SMTPPort,
@@ -75,42 +75,16 @@ func NewInfrastructure(cfg *config.Config) (*Infrastructure, error) {
 	}
 
 	// SMTP 클라이언트 초기화
-	smtpClient := mail.NewSMTPClient(smtpConfig)
+	infrastructure.SMTPClient = mail.NewSMTPClient(smtpConfig)
 
-	// 메일 레포지토리 어댑터 초기화
-	mailRepo := repository.NewMailRepository(smtpClient)
-
-	// 이메일 템플릿 서비스 초기화
-	infrastructure.EmailTemplates = mail.NewEmailTemplateService(
-		cfg.Service.BaseURL,
-		cfg.Email.SenderEmail,
-		cfg.Service.Name,
-	)
-
-	// 이메일 서비스 초기화
-	infrastructure.EmailService = mail.NewEmailService(
-		infrastructure.EmailTemplates,
-		mailRepo,
-	)
-
-	// TODO: 나머지 레포지토리 초기화
-	userRepo := repository.NewUserRepository(infrastructure.DB)
-	tokenRepo := repository.NewTokenRepository(infrastructure.DB)
-	auditLogRepo := repository.NewAuditLogRepository(infrastructure.DB)
-
-	// 레포지토리 컬렉션 초기화
-	infrastructure.Repositories = domainrepo.NewRepositories(
-		userRepo,
-		tokenRepo,
-		auditLogRepo,
-		cacheRepo,
-		mailRepo,
-	)
+	if err != nil {
+		return nil, fmt.Errorf("SMTP 클라이언트 초기화 실패: %w", err)
+	}
 
 	logger.Info("인프라스트럭처 초기화 완료",
 		zap.String("database", "PostgreSQL"),
 		zap.String("redis", "Redis"),
-		zap.String("mail", "SMTP"),
+		zap.String("email", "SMTP"),
 	)
 
 	return infrastructure, nil

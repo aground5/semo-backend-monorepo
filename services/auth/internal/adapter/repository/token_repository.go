@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/domain/entity"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/domain/repository"
@@ -87,6 +88,28 @@ func (r *TokenRepositoryImpl) Delete(ctx context.Context, id uint) error {
 }
 
 // ===== 토큰 그룹 관련 메서드 =====
+
+// FindOrCreateTokenGroup은 토큰 그룹을 찾거나 생성합니다.
+func (r *TokenRepositoryImpl) FindOrCreateTokenGroup(ctx context.Context, userID string) (*entity.TokenGroup, error) {
+	var tokenGroupModel model.TokenGroupModel
+
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID).First(&tokenGroupModel).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 새 토큰 그룹 생성
+			tokenGroupModel = model.TokenGroupModel{
+				UserID: userID,
+			}
+			if createErr := r.db.WithContext(ctx).Create(&tokenGroupModel).Error; createErr != nil {
+				return nil, fmt.Errorf("토큰 그룹 생성 실패: %w", createErr)
+			}
+		} else {
+			return nil, err
+		}
+	}
+
+	return TokenGroupFromModel(&tokenGroupModel), nil
+}
 
 // FindGroupByID는 ID로 토큰 그룹을 조회합니다.
 func (r *TokenRepositoryImpl) FindGroupByID(ctx context.Context, id uint) (*entity.TokenGroup, error) {

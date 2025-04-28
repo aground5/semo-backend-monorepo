@@ -1,18 +1,15 @@
 package dto
 
 import (
-	"time"
-
 	"github.com/google/uuid"
 )
 
 // RegisterParams 사용자 회원가입 매개변수
 type RegisterParams struct {
-	Email     string
-	Password  string
-	Username  string
-	IP        string
-	UserAgent string
+	Email    string
+	Password string
+	Username string
+	Name     string
 }
 
 // LoginParams 로그인 매개변수
@@ -38,5 +35,4 @@ type DeviceInfo struct {
 type AuthTokens struct {
 	AccessToken  string
 	RefreshToken string
-	ExpiresAt    time.Time
 }

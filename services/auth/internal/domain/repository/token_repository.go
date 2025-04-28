@@ -28,6 +28,9 @@ type TokenRepository interface {
 	Delete(ctx context.Context, id uint) error
 
 	// 토큰 그룹 관련 메서드
+	// FindOrCreateTokenGroup 토큰 그룹 찾기 또는 생성
+	FindOrCreateTokenGroup(ctx context.Context, userID string) (*entity.TokenGroup, error)
+
 	// FindGroupByID ID로 토큰 그룹 조회
 	FindGroupByID(ctx context.Context, id uint) (*entity.TokenGroup, error)
 

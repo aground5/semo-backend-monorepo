@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"math/big"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -87,4 +89,41 @@ func GetUserAgent(ctx context.Context) string {
 		return req.UserAgent()
 	}
 	return "unknown"
+}
+
+// ValidatePasswordStrength 비밀번호 강도 검증
+func ValidatePasswordStrength(password string) error {
+	if len(password) < 8 {
+		return fmt.Errorf("비밀번호는 최소 8자 이상이어야 합니다")
+	}
+
+	// 대문자 포함 여부
+	hasUpper := regexp.MustCompile(`[A-Z]`).MatchString(password)
+	// 소문자 포함 여부
+	hasLower := regexp.MustCompile(`[a-z]`).MatchString(password)
+	// 숫자 포함 여부
+	hasNumber := regexp.MustCompile(`[0-9]`).MatchString(password)
+	// 특수문자 포함 여부
+	hasSpecial := regexp.MustCompile(`[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]`).MatchString(password)
+
+	// 3가지 이상의 조합 검증
+	count := 0
+	if hasUpper {
+		count++
+	}
+	if hasLower {
+		count++
+	}
+	if hasNumber {
+		count++
+	}
+	if hasSpecial {
+		count++
+	}
+
+	if count < 3 {
+		return fmt.Errorf("비밀번호는 대문자, 소문자, 숫자, 특수문자 중 3가지 이상을 포함해야 합니다")
+	}
+
+	return nil
 }

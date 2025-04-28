@@ -1,12 +1,8 @@
 package init
 
 import (
-	"context"
-
-	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/domain/entity"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/domain/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/usecase"
-	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/usecase/dto"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/usecase/interfaces"
 	"go.uber.org/zap"
 )
@@ -99,51 +95,4 @@ func NewAuthUseCaseFacade(
 		authUC:    authUC,
 		sessionUC: sessionUC,
 	}
-}
-
-// 인터페이스 구현 메서드들
-
-// Register 사용자 회원가입
-func (f *AuthUseCaseFacade) Register(ctx context.Context, params dto.RegisterParams) (*entity.User, error) {
-	return f.authUC.Register(ctx, params)
-}
-
-// VerifyEmail 이메일 인증
-func (f *AuthUseCaseFacade) VerifyEmail(ctx context.Context, token string) (*entity.User, error) {
-	return f.authUC.VerifyEmail(ctx, token)
-}
-
-// ResendVerificationEmail 이메일 인증 재발송
-func (f *AuthUseCaseFacade) ResendVerificationEmail(ctx context.Context, email string) error {
-	return f.authUC.ResendVerificationEmail(ctx, email)
-}
-
-// Login 사용자 로그인
-func (f *AuthUseCaseFacade) Login(ctx context.Context, params dto.LoginParams) (*dto.AuthTokens, *entity.User, error) {
-	return f.sessionUC.Login(ctx, params)
-}
-
-// LoginWithPassword 비밀번호로 로그인
-func (f *AuthUseCaseFacade) LoginWithPassword(ctx context.Context, params dto.LoginParams) (*dto.AuthTokens, *entity.User, error) {
-	return f.sessionUC.LoginWithPassword(ctx, params)
-}
-
-// AutoLogin 자동 로그인 (리프레시 토큰 사용)
-func (f *AuthUseCaseFacade) AutoLogin(ctx context.Context, email, refreshToken string, deviceInfo dto.DeviceInfo) (*dto.AuthTokens, error) {
-	return f.sessionUC.AutoLogin(ctx, email, refreshToken, deviceInfo)
-}
-
-// Logout 로그아웃
-func (f *AuthUseCaseFacade) Logout(ctx context.Context, sessionID, accessToken, refreshToken, userID string) error {
-	return f.sessionUC.Logout(ctx, sessionID, accessToken, refreshToken, userID)
-}
-
-// RefreshTokens 토큰 갱신
-func (f *AuthUseCaseFacade) RefreshTokens(ctx context.Context, refreshToken, userID, sessionID string) (*dto.AuthTokens, error) {
-	return f.sessionUC.RefreshTokens(ctx, refreshToken, userID, sessionID)
-}
-
-// GenerateTokensAfter2FA 2FA 인증 후 토큰 생성
-func (f *AuthUseCaseFacade) GenerateTokensAfter2FA(ctx context.Context, userID string, deviceInfo dto.DeviceInfo) (*dto.AuthTokens, error) {
-	return f.sessionUC.GenerateTokensAfter2FA(ctx, userID, deviceInfo)
 }

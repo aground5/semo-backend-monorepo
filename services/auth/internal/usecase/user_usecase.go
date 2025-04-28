@@ -15,7 +15,6 @@ import (
 type UserUseCase struct {
 	logger          *zap.Logger
 	userRepository  repository.UserRepository
-	tokenRepository repository.TokenRepository
 	auditRepository repository.AuditLogRepository
 }
 
@@ -23,13 +22,11 @@ type UserUseCase struct {
 func NewUserUseCase(
 	logger *zap.Logger,
 	userRepo repository.UserRepository,
-	tokenRepo repository.TokenRepository,
 	auditRepo repository.AuditLogRepository,
 ) *UserUseCase {
 	return &UserUseCase{
 		logger:          logger,
 		userRepository:  userRepo,
-		tokenRepository: tokenRepo,
 		auditRepository: auditRepo,
 	}
 }
@@ -87,7 +84,7 @@ func (uc *UserUseCase) ChangePassword(ctx context.Context, userID, currentPasswo
 	}
 
 	// 2. 현재 비밀번호 검증
-	if !uc.verifyPassword(user.Password, currentPassword) {
+	if err := VerifyPassword(user.Password, currentPassword, user.Salt); err != nil {
 		// 비밀번호 변경 실패 감사 로그 기록
 		uc.logUserActivity(ctx, userID, entity.AuditLogTypePasswordChangeFailed, map[string]interface{}{
 			"reason": "incorrect_current_password",
@@ -96,7 +93,7 @@ func (uc *UserUseCase) ChangePassword(ctx context.Context, userID, currentPasswo
 	}
 
 	// 3. 새 비밀번호 강도 검증
-	if err := validatePasswordStrength(newPassword); err != nil {
+	if err := ValidatePasswordStrength(newPassword); err != nil {
 		return err
 	}
 
@@ -149,59 +146,4 @@ func (uc *UserUseCase) RequestPasswordReset(ctx context.Context, email string) e
 	})
 
 	return nil
-}
-
-// 보조 함수들
-
-// logUserActivity 사용자 활동 감사 로그 기록
-func (uc *UserUseCase) logUserActivity(ctx context.Context, userID string, activityType entity.AuditLogType, details map[string]interface{}) {
-	// IP와 User-Agent 정보 추출
-	clientIP := getContextValue(ctx, "client_ip")
-	userAgent := getContextValue(ctx, "user_agent")
-
-	// 상세 정보에 클라이언트 정보 추가
-	if details == nil {
-		details = make(map[string]interface{})
-	}
-	details["ip"] = clientIP
-	details["user_agent"] = userAgent
-
-	// 감사 로그 생성
-	auditLog := entity.NewAuditLog(&userID, activityType, details)
-
-	// 감사 로그 저장
-	if err := uc.auditRepository.Create(context.Background(), auditLog); err != nil {
-		uc.logger.Error("감사 로그 저장 실패",
-			zap.String("user_id", userID),
-			zap.String("activity", string(activityType)),
-			zap.Error(err),
-		)
-	}
-}
-
-// verifyPassword 비밀번호 검증
-func (uc *UserUseCase) verifyPassword(hashedPassword, plainPassword string) bool {
-	// 실제 구현에서는 bcrypt.CompareHashAndPassword 등 사용
-	// 이 예제에서는 단순화를 위해 간단한 비교
-	return hashedPassword == plainPassword+"_hashed"
-}
-
-// revokeUserTokens 사용자 토큰 폐기
-func (uc *UserUseCase) revokeUserTokens(ctx context.Context, userID string) error {
-	// 실제 구현에서는 토큰 데이터베이스에서 특정 사용자의 토큰 폐기
-	// 이 예제에서는 미구현 상태
-	return nil
-}
-
-// getContextValue Context에서 값 추출
-func getContextValue(ctx context.Context, key string) string {
-	value := ctx.Value(key)
-	if value == nil {
-		return "unknown"
-	}
-	strValue, ok := value.(string)
-	if !ok {
-		return "unknown"
-	}
-	return strValue
 }

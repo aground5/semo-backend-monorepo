@@ -3,12 +3,13 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"net/smtp"
 	"time"
 
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/domain/entity"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/domain/repository"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/infrastructure/mail"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/usecase/constants"
-	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/usecase/dto"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/usecase/interfaces"
 	"go.uber.org/zap"
 )
@@ -20,8 +21,11 @@ type EmailUseCase struct {
 	mailRepository   repository.MailRepository
 	userRepository   repository.UserRepository
 	auditRepository  repository.AuditLogRepository
+	smtpClient       *smtp.Client
+	emailTemplate    *mail.EmailTemplateService
 	appURL           string
 	emailSenderEmail string
+	companyName      string
 }
 
 // NewEmailUseCase 새 이메일 유스케이스 생성
@@ -31,8 +35,11 @@ func NewEmailUseCase(
 	mailRepo repository.MailRepository,
 	userRepo repository.UserRepository,
 	auditRepo repository.AuditLogRepository,
+	smtpClient *smtp.Client,
+	emailTemplate *mail.EmailTemplateService,
 	appURL string,
 	emailSenderEmail string,
+	companyName string,
 ) interfaces.EmailUseCase {
 	return &EmailUseCase{
 		logger:           logger,
@@ -40,8 +47,11 @@ func NewEmailUseCase(
 		mailRepository:   mailRepo,
 		userRepository:   userRepo,
 		auditRepository:  auditRepo,
+		smtpClient:       smtpClient,
+		emailTemplate:    emailTemplate,
 		appURL:           appURL,
 		emailSenderEmail: emailSenderEmail,
+		companyName:      companyName,
 	}
 }
 
@@ -91,30 +101,9 @@ func (uc *EmailUseCase) VerifyToken(ctx context.Context, token string) (string, 
 
 // SendVerificationEmail 인증 이메일 발송
 func (uc *EmailUseCase) SendVerificationEmail(ctx context.Context, email, name, token string) error {
-	// 인증 링크 생성
-	verificationLink := fmt.Sprintf("%s/verify-email?token=%s", uc.appURL, token)
-
-	// 이메일 데이터 생성
-	data := dto.VerificationEmailData{
-		Name:             name,
-		VerificationLink: verificationLink,
-		Token:            token,
-		ExpireHours:      constants.VerificationTokenExpiry,
-	}
-
-	// 이메일 내용 생성
-	subject := "이메일 주소 인증"
-	body := fmt.Sprintf(`
-		<h1>안녕하세요, %s님!</h1>
-		<p>아래 링크를 클릭하여 이메일 주소를 인증해 주세요:</p>
-		<p><a href="%s">이메일 인증하기</a></p>
-		<p>또는 다음 코드를 입력하세요: %s</p>
-		<p>이 링크는 %d시간 동안 유효합니다.</p>
-	`, name, verificationLink, token, constants.VerificationTokenExpiry)
-
-	// 이메일 발송
-	err := uc.mailRepository.SendMail(ctx, email, subject, body)
-	if err != nil {
+	// 이메일 서비스를 사용하여 인증 이메일 발송
+	html := uc.emailTemplate.GenerateVerificationEmailHTML(name, token)
+	if err := uc.mailRepository.SendMail(ctx, email, "[SEMO] 이메일 인증 코드 입니다.", html); err != nil {
 		uc.logger.Error("인증 이메일 발송 실패",
 			zap.String("email", email),
 			zap.Error(err),

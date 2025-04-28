@@ -13,6 +13,7 @@ import (
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/domain/entity"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/domain/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/usecase/constants"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/usecase/dto"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/usecase/interfaces"
 	"go.uber.org/zap"
 )
@@ -114,13 +115,13 @@ func (uc *TokenUseCase) GenerateRefreshToken(ctx context.Context, tokenGroupID u
 	expiresAt := now.Add(time.Duration(expiry) * time.Minute)
 
 	// 토큰 엔티티 생성
-	token := entity.NewToken(tokenGroupID, tokenStr, "refresh", expiresAt, now)
+	token := entity.NewToken(tokenGroupID, tokenStr, "refresh", expiresAt)
 
 	return tokenStr, token, nil
 }
 
-// ValidateRefreshToken 리프레시 토큰 검증
-func (uc *TokenUseCase) ValidateRefreshToken(ctx context.Context, refreshToken string) (uint, *entity.User, string, error) {
+// ValidateAndRegenerateRefreshToken 리프레시 토큰 검증 및 갱신
+func (uc *TokenUseCase) ValidateAndRegenerateRefreshToken(ctx context.Context, refreshToken string, user *entity.User, sessionID string) (uint, *entity.User, string, error) {
 	// 1) 리프레시 토큰 조회
 	token, err := uc.tokenRepository.FindByToken(ctx, refreshToken)
 	if err != nil {
@@ -144,6 +145,25 @@ func (uc *TokenUseCase) ValidateRefreshToken(ctx context.Context, refreshToken s
 	if err != nil {
 		uc.logger.Error("토큰 그룹 조회 실패", zap.Error(err))
 		return 0, nil, "", fmt.Errorf("토큰 그룹을 찾을 수 없음")
+	}
+
+	if tokenGroup.UserID != user.ID {
+		// 다른 사용자의 토큰인 경우 - 보안 위험으로 간주
+		auditLog := &entity.AuditLog{
+			UserID: &user.ID,
+			Type:   entity.AuditLogTypeTokenMisuse,
+			Content: map[string]interface{}{
+				"token_owner": tokenGroup.UserID,
+				"requester":   user.ID,
+				"token_id":    token.ID,
+			},
+		}
+
+		if err := uc.auditRepository.Create(ctx, auditLog); err != nil {
+			uc.logger.Error("토큰 오용 감사 로그 저장 실패", zap.Error(err))
+		}
+
+		return 0, nil, "", fmt.Errorf("유효하지 않은 토큰입니다")
 	}
 
 	// 4) 사용자 조회
@@ -177,7 +197,7 @@ func (uc *TokenUseCase) ValidateRefreshToken(ctx context.Context, refreshToken s
 	}
 	auditLog := &entity.AuditLog{
 		UserID:  &user.ID,
-		Type:    entity.AuditLogTypeTokenRefresh,
+		Type:    entity.AuditLogTypeRefreshTokenSuccess,
 		Content: content,
 	}
 
@@ -190,7 +210,38 @@ func (uc *TokenUseCase) ValidateRefreshToken(ctx context.Context, refreshToken s
 
 // RevokeTokenGroup 토큰 그룹 폐기
 func (uc *TokenUseCase) RevokeTokenGroup(ctx context.Context, tokenGroupID uint) error {
-	return uc.tokenRepository.DeleteByGroup(ctx, tokenGroupID)
+	err := uc.tokenRepository.DeleteByGroup(ctx, tokenGroupID)
+	if err != nil {
+		uc.logger.Error("토큰 그룹 폐기 실패", zap.Error(err))
+		return fmt.Errorf("토큰 그룹 폐기 실패: %w", err)
+	}
+
+	err = uc.tokenRepository.DeleteGroup(ctx, tokenGroupID)
+	if err != nil {
+		uc.logger.Error("토큰 그룹 폐기 실패", zap.Error(err))
+		return fmt.Errorf("토큰 그룹 폐기 실패: %w", err)
+	}
+
+	return nil
+}
+
+// RevokeRefreshToken 리프레시 토큰 폐기
+func (uc *TokenUseCase) RevokeRefreshToken(ctx context.Context, refreshToken string) error {
+	token, err := uc.tokenRepository.FindByToken(ctx, refreshToken)
+	if err != nil {
+		uc.logger.Error("리프레시 토큰 조회 실패", zap.Error(err))
+		return fmt.Errorf("리프레시 토큰 조회 실패: %w", err)
+	}
+
+	if token == nil || token.TokenType != "refresh" {
+		return fmt.Errorf("유효하지 않거나 취소된 토큰")
+	}
+
+	if err := uc.tokenRepository.Delete(ctx, token.ID); err != nil {
+		uc.logger.Warn("사용된 리프레시 토큰 삭제 실패", zap.Error(err))
+	}
+
+	return nil
 }
 
 // RevokeAccessToken 액세스 토큰 폐기
@@ -252,11 +303,6 @@ func (uc *TokenUseCase) ValidateAccessToken(ctx context.Context, accessToken str
 
 	// 4) 토큰 검증 오류 처리
 	if err != nil {
-		if ve, ok := err.(*jwt.ValidationError); ok {
-			if ve.Errors&jwt.ValidationErrorExpired != 0 {
-				return nil, fmt.Errorf("액세스 토큰이 만료됨")
-			}
-		}
 		return nil, fmt.Errorf("액세스 토큰 검증 실패: %w", err)
 	}
 
@@ -286,4 +332,87 @@ func (uc *TokenUseCase) ValidateAccessToken(ctx context.Context, accessToken str
 	}
 
 	return user, nil
+}
+
+// RefreshTokens 토큰 갱신
+func (uc *TokenUseCase) RefreshTokens(ctx context.Context, refreshToken, userID, sessionID string) (*dto.AuthTokens, error) {
+	// 1. 리프레시 토큰 검증
+	tokenData, err := uc.tokenRepository.FindByToken(ctx, refreshToken)
+	if err != nil {
+		return nil, fmt.Errorf("리프레시 토큰 검증 실패: %w", err)
+	}
+
+	// 2. 토큰 소유자 검증
+	tokenGroup, err := uc.tokenRepository.FindGroupByID(ctx, tokenData.GroupID)
+	if err != nil {
+		return nil, fmt.Errorf("토큰 그룹 조회 실패: %w", err)
+	}
+
+	if tokenGroup.UserID != userID {
+		// 다른 사용자의 토큰인 경우 - 보안 위험으로 간주
+		auditLog := &entity.AuditLog{
+			UserID: &userID,
+			Type:   entity.AuditLogTypeTokenMisuse,
+			Content: map[string]interface{}{
+				"token_owner": tokenGroup.UserID,
+				"requester":   userID,
+				"token_id":    tokenData.ID,
+			},
+		}
+
+		if err := uc.auditRepository.Create(ctx, auditLog); err != nil {
+			uc.logger.Error("토큰 오용 감사 로그 저장 실패", zap.Error(err))
+		}
+
+		return nil, fmt.Errorf("유효하지 않은 토큰입니다")
+	}
+
+	// 3. 사용자 조회
+	user, err := uc.userRepository.FindByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("사용자 조회 실패: %w", err)
+	}
+
+	// 4. 새 액세스 토큰 생성
+	newAccessToken, err := uc.GenerateAccessToken(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("액세스 토큰 생성 실패: %w", err)
+	}
+
+	// 5. 새 리프레시 토큰 생성
+	newRefreshToken, tokenRecord, err := uc.GenerateRefreshToken(ctx, tokenGroup.ID)
+	if err != nil {
+		return nil, fmt.Errorf("리프레시 토큰 생성 실패: %w", err)
+	}
+
+	// 6. 이전 리프레시 토큰 무효화
+	if err := uc.tokenRepository.Delete(ctx, tokenData.ID); err != nil {
+		uc.logger.Warn("이전 리프레시 토큰 무효화 실패", zap.Error(err))
+	}
+
+	// 7. 새 리프레시 토큰 저장
+	if err := uc.tokenRepository.Create(ctx, tokenRecord); err != nil {
+		return nil, fmt.Errorf("토큰 저장 실패: %w", err)
+	}
+
+	// 8. 토큰 갱신 감사 로그 기록
+	auditLog := &entity.AuditLog{
+		UserID: &userID,
+		Type:   entity.AuditLogTypeTokenRefreshed,
+		Content: map[string]interface{}{
+			"session_id": sessionID,
+		},
+	}
+
+	if err := uc.auditRepository.Create(ctx, auditLog); err != nil {
+		uc.logger.Error("토큰 갱신 감사 로그 저장 실패", zap.Error(err))
+	}
+
+	// 9. 토큰 응답 생성
+	tokens := &dto.AuthTokens{
+		AccessToken:  newAccessToken,
+		RefreshToken: newRefreshToken,
+	}
+
+	return tokens, nil
 }

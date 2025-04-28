@@ -20,21 +20,33 @@ type AuthUseCase struct {
 	logger          *zap.Logger
 	userRepository  repository.UserRepository
 	auditRepository repository.AuditLogRepository
+	tokenRepository repository.TokenRepository
+	auditLogUseCase interfaces.AuditLogUseCase
 	emailUseCase    interfaces.EmailUseCase
+	tokenUseCase    interfaces.TokenUseCase
+	otpUseCase      interfaces.OTPUseCase
 }
 
 // NewAuthUseCase 새 인증 유스케이스 생성
 func NewAuthUseCase(
 	logger *zap.Logger,
 	userRepo repository.UserRepository,
+	tokenRepo repository.TokenRepository,
 	auditRepo repository.AuditLogRepository,
+	auditLogUC interfaces.AuditLogUseCase,
 	emailUC interfaces.EmailUseCase,
+	tokenUC interfaces.TokenUseCase,
+	otpUC interfaces.OTPUseCase,
 ) *AuthUseCase {
 	return &AuthUseCase{
 		logger:          logger,
 		userRepository:  userRepo,
+		tokenRepository: tokenRepo,
 		auditRepository: auditRepo,
+		auditLogUseCase: auditLogUC,
 		emailUseCase:    emailUC,
+		tokenUseCase:    tokenUC,
+		otpUseCase:      otpUC,
 	}
 }
 
@@ -46,7 +58,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, params dto.RegisterParams) 
 	}
 
 	// 2. 비밀번호 강도 검증
-	if err := validatePasswordStrength(params.Password); err != nil {
+	if err := ValidatePasswordStrength(params.Password); err != nil {
 		return nil, err
 	}
 
@@ -102,19 +114,23 @@ func (uc *AuthUseCase) Register(ctx context.Context, params dto.RegisterParams) 
 
 	// 7. 감사 로그 기록
 	go func() {
+		ip := ctx.Value("client_ip")
+		if ip == nil {
+			ip = "unknown"
+		}
+
+		userAgent := ctx.Value("user_agent")
+		if userAgent == nil {
+			userAgent = "unknown"
+		}
+
 		content := map[string]interface{}{
 			"email":      params.Email,
-			"ip":         params.IP,
-			"user_agent": params.UserAgent,
+			"ip":         ip,
+			"user_agent": userAgent,
 		}
 
-		auditLog := &entity.AuditLog{
-			UserID:  &user.ID,
-			Type:    "USER_REGISTERED",
-			Content: content,
-		}
-
-		if err := uc.auditRepository.Create(context.Background(), auditLog); err != nil {
+		if err := uc.auditLogUseCase.AddLog(context.Background(), entity.AuditLogTypeUserRegistered, content, &user.ID); err != nil {
 			uc.logger.Error("감사 로그 저장 실패", zap.Error(err))
 		}
 	}()
@@ -189,7 +205,7 @@ func (uc *AuthUseCase) ResendVerificationEmail(ctx context.Context, email string
 	return nil
 }
 
-func (uc *SessionUseCase) Login(ctx context.Context, params dto.LoginParams) (*dto.AuthTokens, *entity.User, error) {
+func (uc *AuthUseCase) Login(ctx context.Context, params dto.LoginParams) (*dto.AuthTokens, *entity.User, error) {
 	// 1. 매직 코드 확인
 	valid, err := uc.otpUseCase.VerifyMagicCode(ctx, params.Email, params.Code)
 	if err != nil {
@@ -198,7 +214,7 @@ func (uc *SessionUseCase) Login(ctx context.Context, params dto.LoginParams) (*d
 
 	if !valid {
 		// 로그인 실패 감사 로그 기록
-		uc.logLoginAttempt(ctx, "", params.Email, "LOGIN_FAILED", "유효하지 않은 매직 코드", params.IP, params.UserAgent)
+		uc.logLoginAttempt(ctx, "", params.Email, "유효하지 않은 매직 코드", entity.AuditLogTypeLoginFailed)
 		return nil, nil, fmt.Errorf("유효하지 않거나 만료된 코드입니다")
 	}
 
@@ -209,7 +225,7 @@ func (uc *SessionUseCase) Login(ctx context.Context, params dto.LoginParams) (*d
 	}
 
 	// 3. 토큰 그룹 조회 또는 생성
-	tokenGroup, err := uc.findOrCreateTokenGroup(ctx, user.ID)
+	tokenGroup, err := uc.tokenRepository.FindOrCreateTokenGroup(ctx, user.ID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -240,44 +256,44 @@ func (uc *SessionUseCase) Login(ctx context.Context, params dto.LoginParams) (*d
 	}
 
 	// 8. 로그인 성공 감사 로그 기록
-	uc.logLoginAttempt(ctx, user.ID, params.Email, "LOGIN_SUCCESS", "매직 코드 로그인", params.IP, params.UserAgent)
+	uc.logLoginAttempt(ctx, user.ID, params.Email, "매직 코드 로그인", entity.AuditLogTypeLoginSuccess)
 
 	// 9. 토큰 응답 생성 (만료 시간은 30분으로 가정)
 	tokens := &dto.AuthTokens{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().Add(30 * time.Minute),
 	}
 
 	return tokens, user, nil
 }
 
 // LoginWithPassword 비밀번호로 로그인
-func (uc *SessionUseCase) LoginWithPassword(ctx context.Context, params dto.LoginParams) (*dto.AuthTokens, *entity.User, error) {
+func (uc *AuthUseCase) LoginWithPassword(ctx context.Context, params dto.LoginParams) (*dto.AuthTokens, *entity.User, error) {
 	// 1. 사용자 조회
 	user, err := uc.userRepository.FindByEmail(ctx, params.Email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			uc.logLoginAttempt(ctx, "", params.Email, "LOGIN_FAILED", "존재하지 않는 이메일", params.IP, params.UserAgent)
+			uc.logLoginAttempt(ctx, "", params.Email, "존재하지 않는 이메일", entity.AuditLogTypeLoginFailed)
 			return nil, nil, fmt.Errorf("존재하지 않는 이메일입니다")
 		}
 		return nil, nil, fmt.Errorf("사용자 조회 실패: %w", err)
 	}
 
 	// 2. 비밀번호 검증
-	if !uc.verifyPassword(user.Password, params.Password) {
-		uc.logLoginAttempt(ctx, user.ID, params.Email, "LOGIN_FAILED", "잘못된 비밀번호", params.IP, params.UserAgent)
+	err = VerifyPassword(user.Password, params.Password, user.Salt)
+	if err != nil {
+		uc.logLoginAttempt(ctx, user.ID, params.Email, "잘못된 비밀번호", entity.AuditLogTypeLoginFailed)
 		return nil, nil, fmt.Errorf("잘못된 비밀번호입니다")
 	}
 
 	// 3. 이메일 인증 확인
 	if !user.EmailVerified {
-		uc.logLoginAttempt(ctx, user.ID, params.Email, "LOGIN_FAILED", "이메일 미인증", params.IP, params.UserAgent)
+		uc.logLoginAttempt(ctx, user.ID, params.Email, "이메일 미인증", entity.AuditLogTypeLoginFailed)
 		return nil, nil, fmt.Errorf("이메일 인증이 필요합니다")
 	}
 
 	// 4. 토큰 그룹 조회 또는 생성
-	tokenGroup, err := uc.findOrCreateTokenGroup(ctx, user.ID)
+	tokenGroup, err := uc.tokenRepository.FindOrCreateTokenGroup(ctx, user.ID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -308,227 +324,63 @@ func (uc *SessionUseCase) LoginWithPassword(ctx context.Context, params dto.Logi
 	}
 
 	// 9. 로그인 성공 감사 로그 기록
-	uc.logLoginAttempt(ctx, user.ID, params.Email, "LOGIN_SUCCESS", "비밀번호 로그인", params.IP, params.UserAgent)
+	uc.logLoginAttempt(ctx, user.ID, params.Email, "비밀번호 로그인", entity.AuditLogTypeLoginSuccess)
 
 	// 10. 토큰 응답 생성
 	tokens := &dto.AuthTokens{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().Add(30 * time.Minute),
 	}
 
 	return tokens, user, nil
 }
 
 // AutoLogin 자동 로그인 (리프레시 토큰 사용)
-func (uc *SessionUseCase) AutoLogin(ctx context.Context, email, refreshToken string, deviceInfo dto.DeviceInfo) (*dto.AuthTokens, error) {
+func (uc *AuthUseCase) AutoLogin(ctx context.Context, email, refreshToken string, deviceInfo dto.DeviceInfo) (*dto.AuthTokens, error) {
 	// 1. 사용자 조회
 	user, err := uc.userRepository.FindByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			uc.logLoginAttempt(ctx, "", email, "AUTO_LOGIN_FAILED", "존재하지 않는 이메일", deviceInfo.IP, deviceInfo.UserAgent)
+			uc.logLoginAttempt(ctx, "", email, "존재하지 않는 이메일", entity.AuditLogTypeAutoLoginFailed)
 			return nil, fmt.Errorf("존재하지 않는 이메일입니다")
 		}
 		return nil, fmt.Errorf("사용자 조회 실패: %w", err)
 	}
 
 	// 2. 리프레시 토큰 검증 및 토큰 갱신
-	newTokens, err := uc.RefreshTokens(ctx, refreshToken, user.ID, deviceInfo.SessionID)
+	newTokens, err := uc.tokenUseCase.RefreshTokens(ctx, refreshToken, user.ID, deviceInfo.SessionID)
 	if err != nil {
-		uc.logLoginAttempt(ctx, user.ID, email, "AUTO_LOGIN_FAILED", fmt.Sprintf("토큰 갱신 실패: %v", err), deviceInfo.IP, deviceInfo.UserAgent)
+		uc.logLoginAttempt(ctx, user.ID, email, fmt.Sprintf("토큰 갱신 실패: %v", err), entity.AuditLogTypeAutoLoginFailed)
 		return nil, fmt.Errorf("자동 로그인 실패: %w", err)
 	}
 
 	// 3. 자동 로그인 성공 감사 로그 기록
-	uc.logLoginAttempt(ctx, user.ID, email, "AUTO_LOGIN_SUCCESS", "자동 로그인", deviceInfo.IP, deviceInfo.UserAgent)
+	uc.logLoginAttempt(ctx, user.ID, email, "자동 로그인", entity.AuditLogTypeAutoLoginSuccess)
 
 	return newTokens, nil
 }
 
 // Logout 로그아웃
-func (uc *SessionUseCase) Logout(ctx context.Context, sessionID, accessToken, refreshToken, userID string) error {
+func (uc *AuthUseCase) Logout(ctx context.Context, sessionID, accessToken, refreshToken, userID string) error {
 	// 1. 리프레시 토큰 무효화
-	if err := uc.tokenRepository.InvalidateRefreshToken(ctx, refreshToken); err != nil {
+	if err := uc.tokenUseCase.RevokeRefreshToken(ctx, refreshToken); err != nil {
 		uc.logger.Warn("리프레시 토큰 무효화 실패", zap.Error(err))
 	}
 
-	// 2. 액세스 토큰 블랙리스트 추가 (선택적)
-	if err := uc.tokenUseCase.BlacklistAccessToken(ctx, accessToken); err != nil {
-		uc.logger.Warn("액세스 토큰 블랙리스트 추가 실패", zap.Error(err))
+	// 2. 액세스 토큰 무효화 (선택적)
+	if err := uc.tokenUseCase.RevokeAccessToken(ctx, accessToken); err != nil {
+		uc.logger.Warn("액세스 토큰 무효화 실패", zap.Error(err))
 	}
 
-	// 3. 로그아웃 감사 로그 기록
-	ua := ctx.Value("user_agent")
-	if ua == nil {
-		ua = "unknown"
-	}
-
-	ip := ctx.Value("client_ip")
-	if ip == nil {
-		ip = "unknown"
-	}
-
-	auditLog := &entity.AuditLog{
-		UserID: userID,
-		Type:   "LOGOUT",
-		Content: map[string]interface{}{
-			"session_id": sessionID,
-			"ip":         ip,
-			"user_agent": ua,
-		},
-	}
-
-	if err := uc.auditRepository.Create(ctx, auditLog); err != nil {
-		uc.logger.Error("로그아웃 감사 로그 저장 실패", zap.Error(err))
-	}
+	uc.logLoginAttempt(ctx, userID, "", "로그아웃", entity.AuditLogTypeLogout)
 
 	return nil
-}
-
-// RefreshTokens 토큰 갱신
-func (uc *SessionUseCase) RefreshTokens(ctx context.Context, refreshToken, userID, sessionID string) (*dto.AuthTokens, error) {
-	// 1. 리프레시 토큰 검증
-	tokenData, err := uc.tokenRepository.FindByRefreshToken(ctx, refreshToken)
-	if err != nil {
-		return nil, fmt.Errorf("리프레시 토큰 검증 실패: %w", err)
-	}
-
-	// 2. 토큰 소유자 검증
-	tokenGroup, err := uc.tokenRepository.FindGroupByID(ctx, tokenData.TokenGroupID)
-	if err != nil {
-		return nil, fmt.Errorf("토큰 그룹 조회 실패: %w", err)
-	}
-
-	if tokenGroup.UserID != userID {
-		// 다른 사용자의 토큰인 경우 - 보안 위험으로 간주
-		auditLog := &entity.AuditLog{
-			UserID: userID,
-			Type:   "TOKEN_MISUSE",
-			Content: map[string]interface{}{
-				"token_owner": tokenGroup.UserID,
-				"requester":   userID,
-				"token_id":    tokenData.ID,
-			},
-		}
-
-		if err := uc.auditRepository.Create(ctx, auditLog); err != nil {
-			uc.logger.Error("토큰 오용 감사 로그 저장 실패", zap.Error(err))
-		}
-
-		return nil, fmt.Errorf("유효하지 않은 토큰입니다")
-	}
-
-	// 3. 사용자 조회
-	user, err := uc.userRepository.FindByID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("사용자 조회 실패: %w", err)
-	}
-
-	// 4. 새 액세스 토큰 생성
-	newAccessToken, err := uc.tokenUseCase.GenerateAccessToken(ctx, user)
-	if err != nil {
-		return nil, fmt.Errorf("액세스 토큰 생성 실패: %w", err)
-	}
-
-	// 5. 새 리프레시 토큰 생성
-	newRefreshToken, tokenRecord, err := uc.tokenUseCase.GenerateRefreshToken(ctx, tokenGroup.ID)
-	if err != nil {
-		return nil, fmt.Errorf("리프레시 토큰 생성 실패: %w", err)
-	}
-
-	// 6. 이전 리프레시 토큰 무효화
-	if err := uc.tokenRepository.InvalidateRefreshToken(ctx, refreshToken); err != nil {
-		uc.logger.Warn("이전 리프레시 토큰 무효화 실패", zap.Error(err))
-	}
-
-	// 7. 새 리프레시 토큰 저장
-	if err := uc.tokenRepository.Create(ctx, tokenRecord); err != nil {
-		return nil, fmt.Errorf("토큰 저장 실패: %w", err)
-	}
-
-	// 8. 토큰 갱신 감사 로그 기록
-	auditLog := &entity.AuditLog{
-		UserID: userID,
-		Type:   "TOKEN_REFRESHED",
-		Content: map[string]interface{}{
-			"session_id": sessionID,
-		},
-	}
-
-	if err := uc.auditRepository.Create(ctx, auditLog); err != nil {
-		uc.logger.Error("토큰 갱신 감사 로그 저장 실패", zap.Error(err))
-	}
-
-	// 9. 토큰 응답 생성
-	tokens := &dto.AuthTokens{
-		AccessToken:  newAccessToken,
-		RefreshToken: newRefreshToken,
-		ExpiresAt:    time.Now().Add(30 * time.Minute),
-	}
-
-	return tokens, nil
-}
-
-// GenerateTokensAfter2FA 2FA 인증 후 토큰 생성
-func (uc *SessionUseCase) GenerateTokensAfter2FA(ctx context.Context, userID string, deviceInfo dto.DeviceInfo) (*dto.AuthTokens, error) {
-	// 1. 사용자 조회
-	user, err := uc.userRepository.FindByID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("사용자 조회 실패: %w", err)
-	}
-
-	// 2. 토큰 그룹 조회 또는 생성
-	tokenGroup, err := uc.findOrCreateTokenGroup(ctx, user.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. 액세스 토큰 생성
-	accessToken, err := uc.tokenUseCase.GenerateAccessToken(ctx, user)
-	if err != nil {
-		return nil, fmt.Errorf("액세스 토큰 생성 실패: %w", err)
-	}
-
-	// 4. 리프레시 토큰 생성
-	refreshToken, tokenRecord, err := uc.tokenUseCase.GenerateRefreshToken(ctx, tokenGroup.ID)
-	if err != nil {
-		return nil, fmt.Errorf("리프레시 토큰 생성 실패: %w", err)
-	}
-
-	// 5. 리프레시 토큰 저장
-	if err := uc.tokenRepository.Create(ctx, tokenRecord); err != nil {
-		return nil, fmt.Errorf("토큰 저장 실패: %w", err)
-	}
-
-	// 6. 2FA 인증 성공 감사 로그 기록
-	auditLog := &entity.AuditLog{
-		UserID: userID,
-		Type:   "2FA_SUCCESS",
-		Content: map[string]interface{}{
-			"ip":         deviceInfo.IP,
-			"user_agent": deviceInfo.UserAgent,
-			"session_id": deviceInfo.SessionID,
-		},
-	}
-
-	if err := uc.auditRepository.Create(ctx, auditLog); err != nil {
-		uc.logger.Error("2FA 인증 감사 로그 저장 실패", zap.Error(err))
-	}
-
-	// 7. 토큰 응답 생성
-	tokens := &dto.AuthTokens{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().Add(30 * time.Minute),
-	}
-
-	return tokens, nil
 }
 
 // 헬퍼 함수들
 
 // findOrCreateUser 사용자를 이메일로 찾거나 새로 생성
-func (uc *SessionUseCase) findOrCreateUser(ctx context.Context, email string) (*entity.User, error) {
+func (uc *AuthUseCase) findOrCreateUser(ctx context.Context, email string) (*entity.User, error) {
 	user, err := uc.userRepository.FindByEmail(ctx, email)
 	if err == nil {
 		// 사용자 찾음
@@ -557,79 +409,34 @@ func (uc *SessionUseCase) findOrCreateUser(ctx context.Context, email string) (*
 	return newUser, nil
 }
 
-// findOrCreateTokenGroup 토큰 그룹을 찾거나 새로 생성
-func (uc *SessionUseCase) findOrCreateTokenGroup(ctx context.Context, userID string) (*entity.TokenGroup, error) {
-	tokenGroup, err := uc.tokenRepository.FindGroupByUserID(ctx, userID)
-	if err == nil && tokenGroup != nil {
-		// 토큰 그룹 찾음
-		return tokenGroup, nil
-	}
-
-	// 새 토큰 그룹 생성
-	newTokenGroup := &entity.TokenGroup{
-		UserID: userID,
-	}
-
-	if err := uc.tokenRepository.CreateGroup(ctx, newTokenGroup); err != nil {
-		return nil, fmt.Errorf("토큰 그룹 생성 실패: %w", err)
-	}
-
-	return newTokenGroup, nil
-}
-
-// verifyPassword 비밀번호 검증
-func (uc *SessionUseCase) verifyPassword(hashedPassword, plainPassword string) bool {
-	// 실제 검증 로직 구현 (예: bcrypt.CompareHashAndPassword)
-	// 이 예제에서는 단순화를 위해 간단한 비교 사용
-	return hashedPassword == plainPassword+"_hashed"
-}
-
 // logLoginAttempt 로그인 시도 감사 로그 기록
-func (uc *SessionUseCase) logLoginAttempt(ctx context.Context, userID, email, logType, reason, ip, userAgent string) {
-	auditLog := &entity.AuditLog{
-		UserID: userID,
-		Type:   logType,
-		Content: map[string]interface{}{
-			"email":      email,
-			"ip":         ip,
-			"user_agent": userAgent,
-			"reason":     reason,
-		},
+func (uc *AuthUseCase) logLoginAttempt(ctx context.Context, userID, email, reason string, logType entity.AuditLogType) {
+	var userIDPtr *string
+	if userID != "" {
+		userIDPtr = &userID
 	}
 
-	if err := uc.auditRepository.Create(context.Background(), auditLog); err != nil {
+	ip := ctx.Value("client_ip")
+	if ip == nil {
+		ip = "unknown"
+	}
+
+	userAgent := ctx.Value("user_agent")
+	if userAgent == nil {
+		userAgent = "unknown"
+	}
+
+	content := map[string]interface{}{
+		"email":      email,
+		"ip":         ip,
+		"user_agent": userAgent,
+		"reason":     reason,
+	}
+
+	// AuditLogUseCase의 AddLog 메소드를 사용하여 감사 로그 기록
+	if err := uc.auditLogUseCase.AddLog(ctx, logType, content, userIDPtr); err != nil {
 		uc.logger.Error("로그인 시도 감사 로그 저장 실패", zap.Error(err))
 	}
-}
-
-// LoginWithPassword 비밀번호로 로그인
-func (uc *AuthUseCase) LoginWithPassword(ctx context.Context, params dto.LoginParams) (*dto.AuthTokens, *entity.User, error) {
-	return nil, nil, fmt.Errorf("인증 유스케이스에서 미구현 기능: LoginWithPassword")
-}
-
-// AutoLogin 자동 로그인 (리프레시 토큰 사용)
-func (uc *AuthUseCase) AutoLogin(ctx context.Context, email, refreshToken string, deviceInfo dto.DeviceInfo) (*dto.AuthTokens, error) {
-	return nil, fmt.Errorf("인증 유스케이스에서 미구현 기능: AutoLogin")
-}
-
-// Logout 로그아웃
-func (uc *AuthUseCase) Logout(ctx context.Context, sessionID, accessToken, refreshToken, userID string) error {
-	return fmt.Errorf("인증 유스케이스에서 미구현 기능: Logout")
-}
-
-// RefreshTokens 토큰 갱신
-func (uc *AuthUseCase) RefreshTokens(ctx context.Context, refreshToken, userID, sessionID string) (*dto.AuthTokens, error) {
-	return nil, fmt.Errorf("인증 유스케이스에서 미구현 기능: RefreshTokens")
-}
-
-// GenerateTokensAfter2FA 2FA 인증 후 토큰 생성
-func (uc *AuthUseCase) GenerateTokensAfter2FA(ctx context.Context, userID string, deviceInfo dto.DeviceInfo) (*dto.AuthTokens, error) {
-	return nil, fmt.Errorf("인증 유스케이스에서 미구현 기능: GenerateTokensAfter2FA")
-}
-
-// Login 로그인 (SessionUseCase로 위임)
-func (uc *AuthUseCase) Login(ctx context.Context, params dto.LoginParams) (*dto.AuthTokens, *entity.User, error) {
-	return nil, nil, fmt.Errorf("인증 유스케이스에서 미구현 기능: Login")
 }
 
 // 헬퍼 함수
@@ -638,41 +445,4 @@ func (uc *AuthUseCase) Login(ctx context.Context, params dto.LoginParams) (*dto.
 func isValidEmail(email string) bool {
 	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 	return emailRegex.MatchString(email)
-}
-
-// validatePasswordStrength 비밀번호 강도 검증
-func validatePasswordStrength(password string) error {
-	if len(password) < 8 {
-		return fmt.Errorf("비밀번호는 최소 8자 이상이어야 합니다")
-	}
-
-	// 대문자 포함 여부
-	hasUpper := regexp.MustCompile(`[A-Z]`).MatchString(password)
-	// 소문자 포함 여부
-	hasLower := regexp.MustCompile(`[a-z]`).MatchString(password)
-	// 숫자 포함 여부
-	hasNumber := regexp.MustCompile(`[0-9]`).MatchString(password)
-	// 특수문자 포함 여부
-	hasSpecial := regexp.MustCompile(`[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]`).MatchString(password)
-
-	// 3가지 이상의 조합 검증
-	count := 0
-	if hasUpper {
-		count++
-	}
-	if hasLower {
-		count++
-	}
-	if hasNumber {
-		count++
-	}
-	if hasSpecial {
-		count++
-	}
-
-	if count < 3 {
-		return fmt.Errorf("비밀번호는 대문자, 소문자, 숫자, 특수문자 중 3가지 이상을 포함해야 합니다")
-	}
-
-	return nil
 }

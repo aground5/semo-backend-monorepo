@@ -30,9 +30,6 @@ type AuthUseCase interface {
 	// Logout 로그아웃
 	Logout(ctx context.Context, sessionID, accessToken, refreshToken, userID string) error
 
-	// RefreshTokens 토큰 갱신
-	RefreshTokens(ctx context.Context, refreshToken, userID, sessionID string) (*dto.AuthTokens, error)
-
 	// GenerateTokensAfter2FA 2FA 인증 후 토큰 생성
 	GenerateTokensAfter2FA(ctx context.Context, userID string, deviceInfo dto.DeviceInfo) (*dto.AuthTokens, error)
 }
