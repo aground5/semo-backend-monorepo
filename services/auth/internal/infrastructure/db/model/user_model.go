@@ -27,11 +27,8 @@ type UserModel struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 
 	// 관계 필드
-	TokenGroups            []TokenGroupModel            `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"token_groups,omitempty"`
-	Activities             []ActivityModel              `gorm:"foreignKey:UserID;constraint:OnDelete:SET NULL" json:"activities,omitempty"`
-	TrustedDevices         []TrustedDeviceModel         `gorm:"foreignKey:UserID" json:"trusted_devices,omitempty"`
-	NotificationPreference *NotificationPreferenceModel `gorm:"foreignKey:UserID" json:"notification_preference,omitempty"`
-	TwoFactorSecret        *TwoFactorSecretModel        `gorm:"foreignKey:UserID" json:"two_factor_secret,omitempty"`
+	TokenGroups []TokenGroupModel `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"token_groups,omitempty"`
+	Activities  []ActivityModel   `gorm:"foreignKey:UserID;constraint:OnDelete:SET NULL" json:"activities,omitempty"`
 }
 
 // TableName 테이블 이름 지정

@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/config"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/auth/internal/infrastructure/db"
@@ -30,25 +29,12 @@ func main() {
 		zap.String("version", cfg.Service.Version),
 	)
 
-	// 데이터베이스 연결 설정
-	dbConfig := db.Config{
-		Driver:          cfg.Database.Driver,
-		Host:            cfg.Database.Host,
-		Port:            cfg.Database.Port,
-		Name:            cfg.Database.Name,
-		User:            cfg.Database.User,
-		Password:        cfg.Database.Password,
-		MaxOpenConns:    cfg.Database.MaxOpenConns,
-		MaxIdleConns:    cfg.Database.MaxIdleConns,
-		ConnMaxLifetime: time.Duration(cfg.Database.ConnMaxLifetime) * time.Second,
-		SSLMode:         "disable", // 필요에 따라 변경
-	}
-
-	// 데이터베이스 연결
-	_, err = db.NewPostgresDB(dbConfig, logger)
+	// 인프라스트럭처 초기화
+	infrastructure, err := db.NewInfrastructure(cfg)
 	if err != nil {
-		logger.Fatal("데이터베이스 연결 실패", zap.Error(err))
+		logger.Fatal("인프라스트럭처 초기화 실패", zap.Error(err))
 	}
+	defer infrastructure.Close()
 
 	// HTTP 서버 설정
 	httpConfig := http.Config{
