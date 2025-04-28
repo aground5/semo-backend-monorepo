@@ -2,10 +2,8 @@ package usecase
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
@@ -25,7 +23,7 @@ type TokenConfig struct {
 	JwtPrivateKey      string // ECDSA 개인키 (PEM 형식)
 	JwtPublicKey       string // ECDSA 공개키 (PEM 형식)
 	AccessTokenExpiry  int    // 액세스 토큰 만료 시간 (분)
-	RefreshTokenExpiry int    // 리프레시 토큰 만료 시간 (일)
+	RefreshTokenExpiry int    // 리프레시 토큰 만료 시간 (분)
 }
 
 // TokenUseCase 토큰 유스케이스 구현체
@@ -113,16 +111,10 @@ func (uc *TokenUseCase) GenerateRefreshToken(ctx context.Context, tokenGroupID u
 	if expiry <= 0 {
 		expiry = constants.RefreshTokenExpiry // 기본값 사용
 	}
-	expiresAt := now.Add(time.Duration(expiry) * 24 * time.Hour)
+	expiresAt := now.Add(time.Duration(expiry) * time.Minute)
 
 	// 토큰 엔티티 생성
-	token := &entity.Token{
-		GroupID:   tokenGroupID,
-		Token:     tokenStr,
-		TokenType: "refresh",
-		ExpiresAt: expiresAt,
-		CreatedAt: now,
-	}
+	token := entity.NewToken(tokenGroupID, tokenStr, "refresh", expiresAt, now)
 
 	return tokenStr, token, nil
 }
@@ -294,15 +286,4 @@ func (uc *TokenUseCase) ValidateAccessToken(ctx context.Context, accessToken str
 	}
 
 	return user, nil
-}
-
-// 내부 헬퍼 함수들
-
-// GenerateRandomString 랜덤 문자열 생성
-func GenerateRandomString(length int) string {
-	b := make([]byte, length)
-	if _, err := rand.Read(b); err != nil {
-		return ""
-	}
-	return base64.URLEncoding.EncodeToString(b)[:length]
 }

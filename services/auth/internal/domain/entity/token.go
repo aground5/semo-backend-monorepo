@@ -10,6 +10,7 @@ type Token struct {
 	GroupID   uint      // 연결된 토큰 그룹
 	Token     string    // 암호화된 토큰 값
 	TokenType string    // 토큰 유형 (access, refresh)
+	CreatedAt time.Time // 생성 시간
 	ExpiresAt time.Time // 만료 시간
 }
 
@@ -20,6 +21,7 @@ func NewToken(groupID uint, token, tokenType string, expiresAt time.Time) *Token
 		Token:     token,
 		TokenType: tokenType,
 		ExpiresAt: expiresAt,
+		CreatedAt: time.Now(),
 	}
 }
 
