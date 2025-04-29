@@ -1,0 +1,70 @@
+postgres:
+  address: {{ .Values.postgres.address | quote }}
+  username: {{ .Values.postgres.username | quote }}
+  password: {{ .Values.postgres.password | quote }}
+  database: {{ .Values.postgres.database | quote }}
+  schema: {{ .Values.postgres.schema | quote }}
+
+redis:
+  addresses: {{ .Values.redis.addresses | toYaml | nindent 4 }}
+  username: {{ .Values.redis.username | quote }}
+  password: {{ .Values.redis.password | quote }}
+  database: {{ .Values.redis.database }}
+  tls: {{ .Values.redis.tls }}
+
+spicedb:
+  address: {{ .Values.spicedb.address | quote }}
+  token: {{ .Values.spicedb.token | quote }}
+
+service:
+  service_name: {{ .Values.serviceName | quote }}
+  http_port: {{ .Values.service.httpTargetPort }}
+  grpc_port: {{ .Values.service.grpcTargetPort }}
+  base_url: {{ .Values.baseUrl | quote }}
+
+email:
+  smtp_host: {{ .Values.email.smtp_host | quote }}
+  smtp_port: {{ .Values.email.smtp_port }}
+  username: {{ .Values.email.username | quote }}
+  password: {{ .Values.email.password | quote }}
+  sender_email: {{ .Values.email.sender_email | quote }}
+
+secrets:
+  grpc_token: {{ .Values.secrets.grpc_token | quote }}
+  session_secret: {{ .Values.secrets.session_secret | quote }}
+
+microservices: {{ .Values.microservices | toYaml | nindent 2 }}
+
+logs:
+  log_path: {{ .Values.logs.log_path | quote }}
+  log_level: {{ .Values.logs.log_level | quote }}
+  stdout_only: {{ .Values.logs.stdout_only }}
+
+s3:
+  region: {{ .Values.s3.region | quote }}
+  bucket_name: {{ .Values.s3.bucket_name | quote }}
+  access_key: {{ .Values.s3.access_key | quote }}
+  secret_key: {{ .Values.s3.secret_key | quote }}
+
+ai_executor:
+  path: {{ .Values.ai_executor.path | quote }}
+  openai_api_key: {{ .Values.ai_executor.openai_api_key | quote }}
+  openai_model: {{ .Values.ai_executor.openai_model | quote }}
+  context_size: {{ .Values.ai_executor.context_size | quote }}
+  openai_endpoint: {{ .Values.ai_executor.openai_endpoint | quote }}
+  anthropic_api_key: {{ .Values.ai_executor.anthropic_api_key | quote }}
+  anthropic_model: {{ .Values.ai_executor.anthropic_model | quote }}
+  google_generative_ai_api_key: {{ .Values.ai_executor.google_generative_ai_api_key | quote }}
+  google_model: {{ .Values.ai_executor.google_model | quote }}
+  grok_api_key: {{ .Values.ai_executor.grok_api_key | quote }}
+  grok_model: {{ .Values.ai_executor.grok_model | quote }}
+  grok_endpoint: {{ .Values.ai_executor.grok_endpoint | quote }}
+  langfuse_public_key: {{ .Values.ai_executor.langfuse_public_key | quote }}
+  langfuse_secret_key: {{ .Values.ai_executor.langfuse_secret_key | quote }}
+  langfuse_baseurl: {{ .Values.ai_executor.langfuse_baseurl | quote }}
+  enable_telemetry: {{ .Values.ai_executor.enable_telemetry | quote }}
+  log_level: {{ .Values.ai_executor.log_level | quote }}
+  enable_file_logging: {{ .Values.ai_executor.enable_file_logging | quote }}
+  log_dir: {{ .Values.ai_executor.log_dir | quote }}
+  log_max_size: {{ .Values.ai_executor.log_max_size | quote }}
+  log_max_files: {{ .Values.ai_executor.log_max_files | quote }}

@@ -1,0 +1,62 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "semo-backend-server.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "semo-backend-server.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.baseUrl }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "semo-backend-server.fullname" . }}
+                port:
+                  number: {{ .Values.service.httpPort }}
+  {{- if .Values.ingress.extraHosts }}
+  {{- range .Values.ingress.extraHosts }}
+    - host: {{ . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "semo-backend-server.fullname" . }}
+                port:
+                  number: {{ .Values.service.httpPort }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.ingress.extraPaths }}
+  {{- range .Values.ingress.extraPaths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ .serviceName }}
+                port:
+                  number: {{ .servicePort }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.baseUrl }}
+        {{- range .Values.ingress.extraHosts }}
+        - {{ . }}
+        {{- end }}
+      secretName: {{ include "semo-backend-server.fullname" . }}-tls
+  {{- end }}
+{{- end }}

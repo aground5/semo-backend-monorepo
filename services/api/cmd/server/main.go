@@ -1,67 +1,98 @@
 package main
 
 import (
-	"context"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/api/internal/adapter/repository"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/api/internal/config"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/api/internal/infrastructure/db"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/api/internal/infrastructure/grpc"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/api/internal/infrastructure/http"
+	appinit "github.com/wekeepgrowing/semo-backend-monorepo/services/api/internal/init"
+	"go.uber.org/zap"
 )
 
 func main() {
-	// 로거 초기화
-	logger := log.New(os.Stdout, "[API] ", log.LstdFlags)
-	logger.Println("API 서비스를 시작합니다...")
+	// 1. 설정 로드
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("설정 로드 실패: %v", err)
+	}
 
-	// Echo 서버 생성
-	e := echo.New()
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-	e.Use(middleware.CORS())
+	// 2. 로거 가져오기
+	logger := cfg.Logger
+	defer logger.Sync()
 
-	// 라우터 설정
-	e.GET("/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{
-			"status":  "ok",
-			"service": "api",
-		})
-	})
+	logger.Info("인증 서비스를 시작합니다...",
+		zap.String("service", cfg.Service.Name),
+		zap.String("version", cfg.Service.Version),
+	)
 
-	// API 버전 v1 라우트 그룹
-	v1 := e.Group("/api/v1")
-	v1.GET("/users", func(c echo.Context) error {
-		// 예시 응답
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"users": []map[string]interface{}{
-				{"id": 1, "name": "User 1"},
-				{"id": 2, "name": "User 2"},
-			},
-		})
-	})
+	// 3. 인프라스트럭처 초기화
+	infrastructure, err := db.NewInfrastructure(cfg)
+	if err != nil {
+		logger.Fatal("인프라스트럭처 초기화 실패", zap.Error(err))
+	}
+	defer infrastructure.Close()
 
-	// 서버 시작
+	// 4. 레포지토리 초기화
+	repositories := repository.InitRepositories(infrastructure.DB, infrastructure.RedisClient, infrastructure.SMTPClient)
+
+	// 5. 유스케이스 초기화
+	useCases := appinit.NewUseCases(repositories, logger)
+
+	// 나중에 사용하기 위해 전역 변수에 등록 또는 핸들러에 직접 주입
+	// TODO: 추후 HTTP/gRPC 핸들러에 useCases 객체를 전달하는 로직 추가
+
+	// 5. HTTP 서버 설정
+	httpConfig := http.Config{
+		Port:    cfg.Server.HTTP.Port,
+		Timeout: cfg.Server.HTTP.Timeout,
+		Debug:   cfg.Server.HTTP.Debug,
+	}
+
+	// 6. HTTP 서버 생성
+	httpServer := http.NewServer(httpConfig, logger)
+	httpServer.RegisterRoutes()
+
+	// 7. gRPC 서버 설정
+	grpcConfig := grpc.Config{
+		Port:    cfg.Server.GRPC.Port,
+		Timeout: cfg.Server.GRPC.Timeout,
+	}
+
+	// 8. gRPC 서버 생성
+	grpcServer := grpc.NewServer(grpcConfig, logger)
+	grpcServer.RegisterServices()
+
+	// 9. 서버 시작
 	go func() {
-		if err := e.Start(":8081"); err != nil && err != http.ErrServerClosed {
-			logger.Fatalf("서버 시작 실패: %v", err)
+		if err := httpServer.Start(); err != nil {
+			logger.Error("HTTP 서버 종료", zap.Error(err))
 		}
 	}()
 
-	// 그레이스풀 종료를 위한 시그널 처리
+	go func() {
+		if err := grpcServer.Start(); err != nil {
+			logger.Error("gRPC 서버 종료", zap.Error(err))
+		}
+	}()
+
+	// 10. 그레이스풀 종료를 위한 시그널 처리
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	logger.Println("서버를 종료합니다...")
+	logger.Info("서버를 종료합니다...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := e.Shutdown(ctx); err != nil {
-		logger.Fatalf("서버 종료 중 오류 발생: %v", err)
+	// 서버 종료
+	if err := httpServer.Stop(); err != nil {
+		logger.Error("HTTP 서버 종료 오류", zap.Error(err))
 	}
 
-	logger.Println("서버가 정상적으로 종료되었습니다")
+	grpcServer.Stop()
+
+	logger.Info("서버가 정상적으로 종료되었습니다")
 }
