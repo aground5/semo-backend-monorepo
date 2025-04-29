@@ -1,0 +1,14 @@
+.DS_Store
+coverage.txt
+_test
+vendor
+.idea
+*.iml
+*.out
+.vscode
+
+app.log
+configs/file
+k8s/spicedb
+k8s/values.yaml
+k8s/staging-values.yaml

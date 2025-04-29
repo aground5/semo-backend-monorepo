@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package geolite;
+
+// Go 코드 생성 시 사용될 패키지 경로를 지정합니다. (go_package)
+option go_package = "geolite-server/proto/geolite;geolite";
+
+// IP 요청 메시지
+message GeoIPRequest {
+  string ip = 1;  // IP 주소
+}
+
+// IP 조회 결과 메시지
+message GeoIPResponse {
+  string country_iso = 1;
+  string country     = 2;
+  string city        = 3;
+  string time_zone   = 4;
+  double latitude    = 5;
+  double longitude   = 6;
+}
+
+// gRPC 서비스 정의
+service GeoLiteService {
+  rpc GetGeoIP(GeoIPRequest) returns (GeoIPResponse);
+}

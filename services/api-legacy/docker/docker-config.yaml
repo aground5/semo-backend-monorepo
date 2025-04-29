@@ -1,0 +1,67 @@
+postgres:
+  address: "postgres:5432"
+  username: "dev"
+  password: "dev"
+  database: "semo"
+
+mongodb:
+  uri: "mongodb://localhost:27017"
+  username: "dev"
+  password: "dev"
+
+redis:
+  addresses: ["redis:6379"]
+  password: "REMOVED_REDIS_PASSWORD_2"
+
+spicedb:
+  address: "localhost:50051"
+  token: "REMOVED_SPICEDB_TOKEN"
+
+service:
+  service_name: "ox-org-ai-o2297h3l8pe2"
+  http_port: 2003
+  grpc_port: 2103
+
+organization:
+  id: o2297h3l8pe2
+
+email:
+  smtp_host: "smtp.daum.net"
+  smtp_port: 465
+  username: "aground5"
+  password: "REMOVED_DAUM_SMTP_PASSWORD"
+
+secrets:
+  grpc_token: "grpc_token"
+  jwt_secret: "REMOVED_AWS_SECRET_ACCESS_KEY_1"
+  session_secret: "REMOVED_SESSION_SECRET_2"
+
+microservices:
+  - name: "ox-authn"
+    address: "127.0.0.1"
+    http_port: 2000
+    grpc_port: 2100
+  - name: "ox-geolite"
+    address: "127.0.0.1"
+    http_port: 2002
+    grpc_port: 2102
+
+logs:
+  log_path: "/Users/k2zoo/Documents/growingup/ox-hr/authn/app.log"
+  log_level: "DEBUG"
+  stdout_only: true
+
+s3:
+  region: "ap-northeast-2"
+  bucket_name: "test-ox-org-o2297h3l8pe2"
+  access_key: "REMOVED_AWS_ACCESS_KEY_ID_2"
+  secret_key: "REMOVED_AWS_SECRET_ACCESS_KEY_2"
+
+openai:
+  api_key: "REMOVED_OPENAI_API_KEY"
+  #  api_url: "https://api.openai.com/v1/models"
+  #  api_url: "http://localhost:11434/v1/models"
+  project_id: "proj_vbJOehMRSRAjqZ0wDS2QFGv1"
+  #  base_model: "deepseek-r1:8b"
+  xai_api_key: "REMOVED_XAI_API_KEY"
+  gemini_api_key: "REMOVED_GOOGLE_API_KEY"

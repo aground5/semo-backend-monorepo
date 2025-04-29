@@ -1,0 +1,24 @@
+definition profile {}
+
+definition team {
+    relation manager: profile | team#member
+    relation direct_member: profile | team#member
+    relation direct_guest: profile | team#member
+
+    permission manage = manager
+    permission member = manager + direct_member
+    permission reader = member + direct_guest
+}
+
+definition item {
+    relation workspace: organization
+    relation parent: item
+
+    relation owner: profile | team#member
+    relation member: profile | team#member
+    relation reader: profile | team#reader | team#member
+
+    permission manage = owner + parent->manage
+    permission write = owner + member + parent->write
+    permission read = reader + owner + member + parent->read
+}

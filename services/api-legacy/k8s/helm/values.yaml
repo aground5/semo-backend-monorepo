@@ -1,0 +1,175 @@
+# Default values for Semo Backend Server Helm Chart
+
+# ----------------------
+# Deployment Settings
+# ----------------------
+
+# Namespace to deploy resources into
+namespace: default
+
+# Number of replicas to deploy
+replicaCount: 2
+
+# ----------------------
+# Container Settings
+# ----------------------
+
+# Image configuration
+image:
+  repository: ghcr.io/wekeepgrowing/semo-backend
+  tag: v0.1.3
+  pullPolicy: IfNotPresent
+
+# Resource allocation
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 2000m
+    memory: 1024Mi
+
+# Node selector for pod scheduling
+nodeSelector: {}
+  # kubernetes.io/arch: amd64
+  # kubernetes.io/os: linux
+
+# ----------------------
+# Network Settings
+# ----------------------
+
+# Service configuration
+service:
+  type: ClusterIP
+  httpPort: 80
+  httpTargetPort: 2003
+  grpcPort: 9090
+  grpcTargetPort: 2103
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls: false
+  extraHosts: []
+  extraPaths: []
+
+# Health check probe settings
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+  readiness:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+
+# ----------------------
+# Storage Settings
+# ----------------------
+
+# Volume configuration
+volumes:
+  logs:
+    enabled: true
+    storageClass: longhorn
+    size: 1Gi
+    accessModes:
+      - ReadWriteOnce
+
+# ----------------------
+# Application Settings
+# ----------------------
+
+# Service identity
+serviceName: "semo-backend-server"
+baseUrl: ""
+
+# Database configuration
+postgres:
+  address: ""
+  username: ""
+  password: ""
+  database: ""
+  schema: ""
+
+# Cache configuration
+redis:
+  addresses: [""]
+  username: ""
+  password: ""
+  database: 0
+  tls: false
+
+# SpiceDB configuration
+spicedb:
+  address: ""
+  token: ""
+
+# Email configuration
+email:
+  smtp_host: ""
+  smtp_port: 465
+  username: ""
+  password: ""
+  sender_email: ""
+
+# Security configuration
+secrets:
+  grpc_token: ""
+  session_secret: ""
+
+# Microservices configuration
+microservices:
+  - name: ""
+    address: ""
+    http_port: 2000
+    grpc_port: 2100
+  - name: ""
+    address: ""
+    http_port: 2002
+    grpc_port: 2102
+
+# Logging configuration
+logs:
+  log_path: ""
+  log_level: "info"
+  stdout_only: true
+
+# S3 configuration
+s3:
+  region: ""
+  bucket_name: ""
+  access_key: ""
+  secret_key: ""
+
+# AI Executor configuration
+ai_executor:
+  path: ""
+  openai_api_key: ""
+  openai_model: ""
+  context_size: ""
+  openai_endpoint: ""
+  anthropic_api_key: ""
+  anthropic_model: ""
+  google_generative_ai_api_key: ""
+  google_model: ""
+  grok_api_key: ""
+  grok_model: ""
+  grok_endpoint: ""
+  langfuse_public_key: ""
+  langfuse_secret_key: ""
+  langfuse_baseurl: ""
+  enable_telemetry: ""
+  log_level: ""
+  enable_file_logging: ""
+  log_dir: ""
+  log_max_size: ""
+  log_max_files: ""

@@ -1,0 +1,77 @@
+postgres:
+  address: ""
+  username: ""
+  password: ""
+  database: ""
+  schema: ""
+
+redis:
+  addresses: [""]
+  username: ""
+  password: ""
+  database: 0
+  tls: false
+
+spicedb:
+  address: ""
+  token: ""
+
+service:
+  service_name: ""
+  http_port: 2003
+  grpc_port: 2103
+
+email:
+  smtp_host: ""
+  smtp_port: 465
+  username: ""
+  password: ""
+  sender_email: ""
+
+secrets:
+  grpc_token: ""
+  session_secret: ""
+
+microservices:
+  - name: ""
+    address: ""
+    http_port: 2000
+    grpc_port: 2100
+  - name: ""
+    address: ""
+    http_port: 2002
+    grpc_port: 2102
+
+logs:
+  log_path: ""
+  log_level: ""
+  stdout_only: true
+
+s3:
+  region: ""
+  bucket_name: ""
+  access_key: ""
+  secret_key: ""
+
+ai_executor:
+  path: ""
+  openai_api_key: ""
+  openai_model: ""
+  context_size: ""
+  openai_endpoint: ""
+  anthropic_api_key: ""
+  anthropic_model: ""
+  google_generative_ai_api_key: ""
+  google_model: ""
+  grok_api_key: ""
+  grok_model: ""
+  grok_endpoint: ""
+  langfuse_public_key: ""
+  langfuse_secret_key: ""
+  langfuse_baseurl: ""
+  enable_telemetry: ""
+  log_level: ""
+  enable_file_logging: ""
+  log_dir: ""
+  log_max_size: ""
+  log_max_files: ""
