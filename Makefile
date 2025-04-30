@@ -77,3 +77,6 @@ docker-api:
 docker-auth:
 	@echo "인증 서비스 Docker 이미지를 빌드합니다..."
 	docker build -t auth-service -f deployments/docker/auth.Dockerfile . 
+
+air-api-legacy:
+	APP_SERVICE=api-legacy air -c .air.toml -build.args_bin="--config=services/api-legacy/configs/file/configs.yaml"
