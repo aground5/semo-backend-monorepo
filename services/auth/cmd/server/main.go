@@ -39,7 +39,7 @@ func main() {
 	defer infrastructure.Close()
 
 	// 4. 레포지토리 초기화
-	repositories := repository.InitRepositories(infrastructure.DB, infrastructure.RedisClient, infrastructure.SMTPClient)
+	repositories := repository.NewRepositories(infrastructure)
 
 	// 5. 유스케이스 초기화
 	useCases := appinit.NewUseCases(repositories, logger)

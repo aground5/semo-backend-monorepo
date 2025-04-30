@@ -1,4 +1,4 @@
-.PHONY: setup run build test lint proto-gen docker-all docker-notification docker-api docker-auth mock
+.PHONY: setup run build test lint proto-gen docker-all docker-notification docker-api docker-auth mock tidy
 
 # 기본 명령어
 all: setup build
@@ -12,6 +12,16 @@ setup:
 	cd services/auth && go mod download
 	cd tools && go mod download
 	go install github.com/vektra/mockery/v2@latest
+
+# 모든 모듈 tidy
+tidy:
+	@echo "모든 모듈의 go.mod 파일을 정리합니다..."
+	cd pkg && go mod tidy
+	cd services/notification && go mod tidy
+	cd services/api && go mod tidy
+	cd services/auth && go mod tidy
+	cd tools && go mod tidy
+	go work sync
 
 # 모든 서비스 실행
 run:
