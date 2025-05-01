@@ -49,6 +49,7 @@ tmp/
 /configs/dev/
 /configs/staging/
 /configs/prod/
+/configs/legacy/
 # 예외: example 디렉토리는 포함
 !/configs/example/
 

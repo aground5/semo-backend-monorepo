@@ -1,0 +1,136 @@
+# Default values for OxHR Authentication Server Helm Chart
+
+# ----------------------
+# Deployment Settings
+# ----------------------
+
+# Namespace to deploy resources into
+namespace: default
+
+# Number of replicas to deploy
+replicaCount: 2
+
+# ----------------------
+# Container Settings
+# ----------------------
+
+# Image configuration
+image:
+  repository: ghcr.io/wekeepgrowing/semo-authn-server
+  tag: v0.1.2
+  pullPolicy: IfNotPresent
+
+# Resource allocation
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 2000m
+    memory: 1024Mi
+
+# Node selector for pod scheduling
+nodeSelector: {}
+  # kubernetes.io/arch: amd64
+  # kubernetes.io/os: linux
+
+# ----------------------
+# Network Settings
+# ----------------------
+
+# Service configuration
+service:
+  type: ClusterIP
+  httpPort: 80
+  httpTargetPort: 8080
+  grpcPort: 9090
+  grpcTargetPort: 9090
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls: false
+  extraHosts: []
+  extraPaths: []
+
+# Health check probe settings
+probes:
+  liveness:
+    path: /
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+  readiness:
+    path: /
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+
+# ----------------------
+# Storage Settings
+# ----------------------
+
+# Volume configuration
+volumes:
+  logs:
+    enabled: true
+    storageClass: longhorn
+    size: 1Gi
+    accessModes:
+      - ReadWriteOnce
+
+# ----------------------
+# Application Settings
+# ----------------------
+
+# Service identity
+serviceName: "oxhr-authn-server"
+baseUrl: ""
+
+# Database configuration
+postgres:
+  address: ""
+  username: ""
+  password: ""
+  database: ""
+  schema: ""
+
+# Cache configuration
+redis:
+  addresses: [""]
+  username: ""
+  password: ""
+  database: 0
+  tls: false
+
+# Email configuration
+email:
+  smtp_host: ""
+  smtp_port: 465
+  username: ""
+  password: ""
+  sender_email: ""
+
+# Security configuration
+secrets:
+  grpc_token: ""
+  session_secret: ""
+  ecdsa_private_key: ""
+  ecdsa_public_key: ""
+
+# Authentication settings
+authn:
+  session_expire_min: 1440
+  access_jwt_expire_min: 5
+  refresh_token_expire_min: 43200
+
+# Logging configuration
+logs:
+  log_path: ""
+  log_level: "info"
+  stdout_only: true
