@@ -1,0 +1,42 @@
+postgres:
+  address: {{ .Values.postgres.address | quote }}
+  username: {{ .Values.postgres.username | quote }}
+  password: {{ .Values.postgres.password | quote }}
+  database: {{ .Values.postgres.database | quote }}
+  schema: {{ .Values.postgres.schema | quote }}
+
+redis:
+  addresses: {{ .Values.redis.addresses | toYaml | nindent 4 }}
+  username: {{ .Values.redis.username | quote }}
+  password: {{ .Values.redis.password | quote }}
+  database: {{ .Values.redis.database }}
+  tls: {{ .Values.redis.tls }}
+
+service:
+  service_name: {{ .Values.serviceName | quote }}
+  http_port: {{ .Values.service.httpTargetPort }}
+  grpc_port: {{ .Values.service.grpcTargetPort }}
+  base_url: {{ .Values.baseUrl | quote }}
+
+email:
+  smtp_host: {{ .Values.email.smtp_host | quote }}
+  smtp_port: {{ .Values.email.smtp_port }}
+  username: {{ .Values.email.username | quote }}
+  password: {{ .Values.email.password | quote }}
+  sender_email: {{ .Values.email.sender_email | quote }}
+
+secrets:
+  grpc_token: {{ .Values.secrets.grpc_token | quote }}
+  session_secret: {{ .Values.secrets.session_secret | quote }}
+  ecdsa_private_key: {{ .Values.secrets.ecdsa_private_key | quote }}
+  ecdsa_public_key: {{ .Values.secrets.ecdsa_public_key | quote }}
+
+authn:
+  session_expire_min: {{ .Values.authn.session_expire_min }}
+  access_jwt_expire_min: {{ .Values.authn.access_jwt_expire_min }}
+  refresh_token_expire_min: {{ .Values.authn.refresh_token_expire_min }}
+
+logs:
+  log_path: {{ .Values.logs.log_path | quote }}
+  log_level: {{ .Values.logs.log_level | quote }}
+  stdout_only: {{ .Values.logs.stdout_only }}

@@ -1,0 +1,145 @@
+# Default values for OxHR Authentication Server Helm Chart
+
+# ----------------------
+# Deployment Settings
+# ----------------------
+
+# Namespace to deploy resources into
+namespace: semo-staging
+
+# Number of replicas to deploy
+replicaCount: 2
+
+# ----------------------
+# Container Settings
+# ----------------------
+
+# Image configuration
+image:
+  repository: ghcr.io/wekeepgrowing/semo-authn-server
+  tag: "v0.1.1"
+  pullPolicy: IfNotPresent
+
+# Resource allocation
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 2000m
+    memory: 1024Mi
+
+# Node selector for pod scheduling
+nodeSelector: {}
+# kubernetes.io/arch: amd64
+# kubernetes.io/os: linux
+
+# ----------------------
+# Network Settings
+# ----------------------
+
+# Service configuration
+service:
+  type: ClusterIP
+  httpPort: 80
+  httpTargetPort: 8080
+  grpcPort: 9090
+  grpcTargetPort: 9090
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    # kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls: true
+  extraHosts: []
+  extraPaths: []
+
+# Health check probe settings
+probes:
+  liveness:
+    path: /
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+  readiness:
+    path: /
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+
+# ----------------------
+# Storage Settings
+# ----------------------
+
+# Volume configuration
+volumes:
+  logs:
+    enabled: false
+    storageClass: longhorn
+    size: 1Gi
+    accessModes:
+      - ReadWriteOnce
+
+# ----------------------
+# Application Settings
+# ----------------------
+
+# Service identity
+serviceName: "semo-authn-server-staging"
+baseUrl: "auth-staging-60d7cfa1.semo.world"
+
+# Database configuration
+postgres:
+  address: "192.168.0.10:45432"
+  username: "postgres"
+  password: "postgres"
+  database: "postgres"
+  schema: "public"
+
+# Cache configuration
+redis:
+  addresses: ["development-redis-master.database:6379"]
+  username: "semoauth"
+  password: "lrlDYCiliJ56E24phHGriReY0puTmdqZvSDNxWgndnY"
+  database: 1
+  tls: false
+
+# Email configuration
+email:
+  smtp_host: "email-smtp.ap-northeast-2.amazonaws.com"
+  smtp_port: 587
+  username: "AKIA5ZYZPABHA5HRD64D"
+  password: "BLiMM87P2HEIPu01eZRww+BLUDiLuXeBwxZVYf9oNaKO"
+  sender_email: "no-reply@semo.world"
+
+# Security configuration
+secrets:
+  grpc_token: "UKRzFlzge7BFXsRfhcRZH8X66nEmzUZ7EHZ8MV6Rl4s="
+  session_secret: "oao9fETNnI1fNRa728rmeW8oNiTRbUO+H6GD2VX7qUQ="
+  ecdsa_private_key: |
+    -----BEGIN EC PRIVATE KEY-----
+    MHcCAQEEIKbffpAMjvuLTDA0nnXo1LTmmjlKYzlzM7AMA4ziSGAqoAoGCCqGSM49
+    AwEHoUQDQgAE2DUcmb5G2a/NXDrEnDtbkgBwSE50ZIX5nCldCGqLEJ/JGEbcj3vM
+    mJ5Xe1S0m+2ocyUoJPAkymI39oct56nCAQ==
+    -----END EC PRIVATE KEY-----
+  ecdsa_public_key: |
+    -----BEGIN PUBLIC KEY-----
+    MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2DUcmb5G2a/NXDrEnDtbkgBwSE50
+    ZIX5nCldCGqLEJ/JGEbcj3vMmJ5Xe1S0m+2ocyUoJPAkymI39oct56nCAQ==
+    -----END PUBLIC KEY-----
+
+# Authentication settings
+authn:
+  session_expire_min: 1440
+  access_jwt_expire_min: 5
+  refresh_token_expire_min: 43200
+
+# Logging configuration
+logs:
+  log_path: ""
+  log_level: "info"
+  stdout_only: true

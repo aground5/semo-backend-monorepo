@@ -5,6 +5,7 @@ use (
 	./services/api
 	./services/api-legacy
 	./services/auth
+	./services/auth-legacy
 	./services/notification
 	./tools
 )
