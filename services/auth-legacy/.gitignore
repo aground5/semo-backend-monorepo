@@ -1,0 +1,13 @@
+.DS_Store
+coverage.txt
+_test
+vendor
+.idea
+*.iml
+*.out
+.vscode
+
+app.log
+configs/file
+
+k8s/values.yaml

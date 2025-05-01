@@ -1,0 +1,24 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo "===== Pre-Build 단계 시작 ====="
+      - echo "AWS CLI 버전 확인:"
+      - aws --version
+      - echo "ECR 로그인을 진행합니다..."
+      # AWS_DEFAULT_REGION을 사용하거나 특정 리전을 지정해주세요. (예: ap-northeast-2)
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+  build:
+    commands:
+      - echo "===== Build 단계 시작 ====="
+      - echo "Docker 이미지를 빌드합니다..."
+      # 빌드할 Dockerfile이 현재 디렉토리에 있다고 가정
+      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+      - echo "ECR에 푸시하기 위해 태그를 설정합니다..."
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo "===== Post-Build 단계 시작 ====="
+      - echo "Docker 이미지를 ECR에 푸시합니다..."
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG

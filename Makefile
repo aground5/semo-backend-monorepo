@@ -79,4 +79,7 @@ docker-auth:
 	docker build -t auth-service -f deployments/docker/auth.Dockerfile . 
 
 air-api-legacy:
-	APP_SERVICE=api-legacy air -c .air.toml -build.args_bin="--config=services/api-legacy/configs/file/configs.yaml"
+	APP_SERVICE=api-legacy air -c .air.toml -build.args_bin="--config=configs/legacy/api/development.yaml"
+
+air-auth-legacy:
+	APP_SERVICE=auth-legacy air -c .air.toml -build.args_bin="--config=configs/legacy/auth/development.yaml"
