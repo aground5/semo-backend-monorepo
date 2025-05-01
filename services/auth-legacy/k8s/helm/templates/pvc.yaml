@@ -1,0 +1,16 @@
+{{- if .Values.volumes.logs.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "oxhr-authn-server.fullname" . }}-logs
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "oxhr-authn-server.labels" . | nindent 4 }}
+spec:
+  storageClassName: {{ .Values.volumes.logs.storageClass }}
+  accessModes:
+    {{- toYaml .Values.volumes.logs.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.volumes.logs.size }}
+{{- end }}

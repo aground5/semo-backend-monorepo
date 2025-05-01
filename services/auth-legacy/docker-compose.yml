@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  postgres:
+    container_name: authn_postgres
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: authn
+    ports:
+      - "5432:5432"
+    volumes:
+      - authn_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    container_name: authn_redis
+    image: redis:latest
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - authn_redis_data:/data
+    restart: unless-stopped
+
+  mongo:
+    container_name: chat_mongo
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: dev
+      MONGO_INITDB_ROOT_PASSWORD: dev
+    ports:
+      - "27017:27017"
+    volumes:
+      - chat_mongo_data:/data/db 
+    restart: unless-stopped
+
+volumes:
+  authn_postgres_data:
+  authn_redis_data:
+  chat_mongo_data:
