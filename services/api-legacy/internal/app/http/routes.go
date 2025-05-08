@@ -50,7 +50,7 @@ func RegisterRoutes(e *echo.Echo) {
 	kickoffController := controllers.NewKickoffController(llmService, profileService)
 	profileController := controllers.NewProfileController(profileService, searchService)
 	projectController := controllers.NewProjectController(projectService, projectMemberService, profileService)
-	taskController := controllers.NewTaskController(taskService, profileService, taskPermissionService)
+	taskController := controllers.NewTaskController(taskService, profileService, taskPermissionService, projectMemberService)
 	taskPermissionController := controllers.NewTaskPermissionController(taskPermissionService, profileService)
 	shareController := controllers.NewShareController(taskPermissionService)
 	sharePermissionController := controllers.NewSharePermissionController(taskPermissionService, profileService, shareService)
