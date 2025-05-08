@@ -16,6 +16,7 @@ type TaskController struct {
 	taskService           *logics.TaskService
 	profileService        *logics.ProfileService
 	taskPermissionService *logics.TaskPermissionService
+	projectMemberService  *logics.ProjectMemberService
 }
 
 // NewTaskController returns a new instance of TaskAPIController.
@@ -23,11 +24,13 @@ func NewTaskController(
 	taskService *logics.TaskService,
 	profileService *logics.ProfileService,
 	taskPermissionService *logics.TaskPermissionService,
+	projectMemberService *logics.ProjectMemberService,
 ) *TaskController {
 	return &TaskController{
 		taskService:           taskService,
 		profileService:        profileService,
 		taskPermissionService: taskPermissionService,
+		projectMemberService:  projectMemberService,
 	}
 }
 
@@ -152,12 +155,28 @@ func (tc *TaskController) UpdateTask(c echo.Context) error {
 
 	// If parent_id is being changed, check write permission for new parent
 	if updates.ParentID != nil && *updates.ParentID != "" {
-		hasPermission, err := tc.taskPermissionService.CheckPermission(*updates.ParentID, profile.ID)
-		if err != nil {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		if len(*updates.ParentID) < 2 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid parent id"})
 		}
-		if !hasPermission {
-			return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have the permission to move to the specified parent"})
+
+		// If parent_id is a project, check project permission
+		if (*updates.ParentID)[:2] == "IP" {
+			hasPermission, err := tc.projectMemberService.CheckPermission(*updates.ParentID, profile.ID)
+			if err != nil {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+			}
+			if !hasPermission {
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have the permission to move to the specified parent"})
+			}
+		} else {
+			// If parent_id is a task, check task permission
+			hasPermission, err := tc.taskPermissionService.CheckPermission(*updates.ParentID, profile.ID)
+			if err != nil {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+			}
+			if !hasPermission {
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have the permission to move to the specified parent"})
+			}
 		}
 	}
 
