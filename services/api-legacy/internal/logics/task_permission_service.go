@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"semo-server/internal/models"
 	"semo-server/internal/repositories"
+	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -11,22 +12,24 @@ import (
 
 // TaskPermissionService provides business logic for task permissions.
 type TaskPermissionService struct {
-	taskService  *TaskService
-	entryService *EntryService
-	shareService *ShareService
-	db           *gorm.DB
+	taskService          *TaskService
+	entryService         *EntryService
+	shareService         *ShareService
+	projectMemberService *ProjectMemberService
+	db                   *gorm.DB
 }
 
 // NewTaskPermissionService creates a new TaskPermissionService instance.
-func NewTaskPermissionService(taskService *TaskService, entryService *EntryService, shareService *ShareService, db *gorm.DB) *TaskPermissionService {
+func NewTaskPermissionService(taskService *TaskService, entryService *EntryService, shareService *ShareService, projectMemberService *ProjectMemberService, db *gorm.DB) *TaskPermissionService {
 	if db == nil {
 		db = repositories.DBS.Postgres
 	}
 	return &TaskPermissionService{
-		taskService:  taskService,
-		entryService: entryService,
-		shareService: shareService,
-		db:           db,
+		taskService:          taskService,
+		entryService:         entryService,
+		shareService:         shareService,
+		projectMemberService: projectMemberService,
+		db:                   db,
 	}
 }
 
@@ -130,6 +133,14 @@ func (tps *TaskPermissionService) RevokePermission(taskID, profileID string) err
 func (tps *TaskPermissionService) CheckPermission(taskID, profileID string) (bool, error) {
 	var count int64
 	rootTaskID := tps.taskService.FindRootTaskID(taskID)
+	if strings.Contains(rootTaskID, "IP") {
+		hasPermission, err := tps.projectMemberService.CheckPermission(rootTaskID, profileID)
+		if err != nil {
+			return false, fmt.Errorf("권한 확인 실패: %w", err)
+		}
+		return hasPermission, nil
+	}
+	fmt.Println("rootTaskID", rootTaskID)
 	if err := tps.db.Model(&models.Entry{}).
 		Where("(task_id = ? OR root_task_id = ?) AND granted_to = ?", taskID, rootTaskID, profileID).
 		Count(&count).Error; err != nil {

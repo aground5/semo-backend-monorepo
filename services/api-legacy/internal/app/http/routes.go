@@ -37,9 +37,9 @@ func RegisterRoutes(e *echo.Echo) {
 	entryService := logics.NewEntryService(cursorManager)
 	shareService := logics.NewShareService(cursorManager)
 	taskService := logics.NewTaskService(db, cursorManager, entryService)
-	taskPermissionService := logics.NewTaskPermissionService(taskService, entryService, shareService, db)
-	projectMemberService := logics.NewProjectMemberService(db, profileService, teamService)
 	projectService := logics.NewProjectService(cursorManager)
+	projectMemberService := logics.NewProjectMemberService(db, profileService, teamService)
+	taskPermissionService := logics.NewTaskPermissionService(taskService, entryService, shareService, projectMemberService, db)
 	searchService := logics.NewSearchService(db, cursorManager, taskPermissionService, projectMemberService, taskService)
 	llmService := logics.NewLLMService(db, taskService, userTestService)
 
