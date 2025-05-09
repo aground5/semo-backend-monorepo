@@ -9,12 +9,13 @@ import (
 // TeamMember represents the many-to-many relationship between users and teams
 // This allows users to belong to multiple teams and teams to have multiple users
 type TeamMember struct {
-	ID        string `gorm:"type:char(12);primaryKey" json:"id"`
-	UserID    string `gorm:"type:char(12);not null;index" json:"user_id"`
-	TeamID    string `gorm:"type:char(12);not null;index" json:"team_id"`
-	Role      string `gorm:"type:varchar(50);default:'member'" json:"role"` // e.g., member, admin, owner
-	Status    string `gorm:"type:varchar(50);default:'active'" json:"status"`
-	InvitedBy string `gorm:"type:char(12);" json:"invited_by"`
+	ID        string   `gorm:"type:char(12);primaryKey" json:"id"`
+	UserID    string   `gorm:"type:char(12);not null;index" json:"user_id"`
+	TeamID    string   `gorm:"type:char(12);not null;index" json:"team_id"`
+	Role      string   `gorm:"type:varchar(50);default:'member'" json:"role"` // e.g., member, admin, owner
+	Scope     []string `gorm:"type:varchar(50)[]" json:"scope"`
+	Status    string   `gorm:"type:varchar(50);default:'active'" json:"status"`
+	InvitedBy string   `gorm:"type:char(12);" json:"invited_by"`
 
 	// Relationships
 	Profile *Profile `gorm:"foreignKey:UserID;references:ID" json:"profile,omitempty"`

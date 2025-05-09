@@ -12,8 +12,9 @@ type Entry struct {
 	TaskID     string `gorm:"type:char(13);primaryKey" json:"task_id"`
 	RootTaskID string `gorm:"type:char(13);primaryKey" json:"root_task_id"`
 
-	CreatedBy string `gorm:"type:char(12);" json:"created_by"`
-	GrantedTo string `gorm:"type:char(12);" json:"granted_to"`
+	CreatedBy string   `gorm:"type:char(12);" json:"created_by"`
+	GrantedTo string   `gorm:"type:char(12);" json:"granted_to"`
+	Scope     []string `gorm:"type:varchar(50)[]" json:"scope"`
 
 	Creator *Profile `gorm:"foreignKey:CreatedBy;references:ID" json:"creator,omitempty"`
 	Grantee *Profile `gorm:"foreignKey:GrantedTo;references:ID" json:"grantee,omitempty"`
