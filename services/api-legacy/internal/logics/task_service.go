@@ -159,6 +159,19 @@ func (ts *TaskService) UpdateTask(taskID string, updates models.ItemUpdate) (*mo
 			return nil, err
 		}
 		updateMap["position"] = newPos
+	} else if updates.ParentID != nil && (task.ParentID == nil || *updates.ParentID != *task.ParentID) {
+		// ParentID가 변경되었고, LeftItemID가 제공되지 않은 경우
+		// 새 부모 그룹에서 가장 작은 position 값보다 작은 값을 할당
+		var minPos decimal.Decimal
+		if err := repositories.DBS.Postgres.
+			Model(&models.Item{}).
+			Where("parent_id = ? AND type = ?", *updates.ParentID, task.Type).
+			Select("COALESCE(MIN(position), 1)").
+			Scan(&minPos).Error; err != nil {
+			return nil, fmt.Errorf("새 부모 그룹의 최소 position 조회 실패: %w", err)
+		}
+		// 0과 최소값의 중간값을 할당
+		updateMap["position"] = decimal.Avg(decimal.Zero, minPos)
 	}
 
 	if len(updateMap) == 0 {
@@ -197,9 +210,62 @@ func (ts *TaskService) DeleteTask(taskID string) error {
 		return fmt.Errorf("failed to fetch task: %w", err)
 	}
 
-	// Use soft delete provided by GORM
-	if err := repositories.DBS.Postgres.Delete(&task).Error; err != nil {
-		return fmt.Errorf("failed to delete task: %w", err)
+	// 트랜잭션 시작
+	tx := repositories.DBS.Postgres.Begin()
+	if tx.Error != nil {
+		return fmt.Errorf("트랜잭션 시작 실패: %w", tx.Error)
+	}
+
+	// 해당 taskID를 부모로 하는 모든 자식 태스크들을 재귀적으로 삭제
+	if err := ts.deleteChildTasksRecursively(tx, taskID); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("자식 태스크 삭제 실패: %w", err)
+	}
+
+	// 해당 taskID를 가리키는 모든 엔트리들을 삭제
+	if err := tx.Where("task_id = ?", taskID).Delete(&models.Entry{}).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("관련 엔트리 삭제 실패: %w", err)
+	}
+
+	// 해당 태스크 삭제
+	if err := tx.Delete(&task).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("태스크 삭제 실패: %w", err)
+	}
+
+	// 트랜잭션 커밋
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("트랜잭션 커밋 실패: %w", err)
+	}
+
+	return nil
+}
+
+// deleteChildTasksRecursively 태스크의 모든 자식 태스크를 재귀적으로 삭제하는 헬퍼 함수
+func (ts *TaskService) deleteChildTasksRecursively(tx *gorm.DB, parentID string) error {
+	// 자식 태스크 목록 조회
+	var childTasks []models.Item
+	if err := tx.Where("parent_id = ? AND type = ?", parentID, "task").Find(&childTasks).Error; err != nil {
+		return fmt.Errorf("자식 태스크 조회 실패: %w", err)
+	}
+
+	// 각 자식 태스크에 대해 재귀적으로 처리
+	for _, childTask := range childTasks {
+		// 자식의 자식 태스크들 삭제
+		if err := ts.deleteChildTasksRecursively(tx, childTask.ID); err != nil {
+			return err
+		}
+
+		// 해당 자식 태스크와 관련된 엔트리 삭제
+		if err := tx.Where("task_id = ?", childTask.ID).Delete(&models.Entry{}).Error; err != nil {
+			return fmt.Errorf("자식 태스크의 엔트리 삭제 실패: %w", err)
+		}
+
+		// 자식 태스크 자체 삭제
+		if err := tx.Delete(&childTask).Error; err != nil {
+			return fmt.Errorf("자식 태스크 삭제 실패: %w", err)
+		}
 	}
 
 	return nil
