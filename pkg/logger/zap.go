@@ -59,7 +59,7 @@ func NewZapLogger(config Config) (*zap.Logger, error) {
 		encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	}
 
-	if config.Format == "console" {
+	if config.Format == "console" || config.Development {
 		encoder = zapcore.NewConsoleEncoder(encoderConfig)
 	} else {
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
