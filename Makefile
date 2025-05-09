@@ -10,6 +10,7 @@ setup:
 	cd services/notification && go mod download
 	cd services/api && go mod download
 	cd services/auth && go mod download
+	cd services/geo && go mod download
 	cd tools && go mod download
 	go install github.com/vektra/mockery/v2@latest
 
@@ -20,6 +21,7 @@ tidy:
 	cd services/notification && go mod tidy
 	cd services/api && go mod tidy
 	cd services/auth && go mod tidy
+	cd services/geo && go mod tidy
 	cd tools && go mod tidy
 	go work sync
 
@@ -43,7 +45,8 @@ proto-gen:
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
 		./proto/auth/v1/*.proto \
 		./proto/notification/v1/*.proto \
-		./proto/api/v1/*.proto
+		./proto/api/v1/*.proto \
+		./proto/geo/v1/*.proto
 
 # 테스트 실행
 test:
@@ -78,8 +81,15 @@ docker-auth:
 	@echo "인증 서비스 Docker 이미지를 빌드합니다..."
 	docker build -t auth-service -f deployments/docker/auth.Dockerfile . 
 
+docker-geo:
+	@echo "지리 서비스 Docker 이미지를 빌드합니다..."
+	docker build -t geo-service -f deployments/docker/geo.Dockerfile .
+
 air-api-legacy:
 	APP_SERVICE=api-legacy air -c .air.toml -build.args_bin="--config=configs/legacy/api/development.yaml"
 
 air-auth-legacy:
 	APP_SERVICE=auth-legacy air -c .air.toml -build.args_bin="--config=configs/legacy/auth/development.yaml"
+
+air-geo:
+	APP_SERVICE=geo air -c .air.toml -build.args_bin="--config=configs/dev/geo.yaml"
