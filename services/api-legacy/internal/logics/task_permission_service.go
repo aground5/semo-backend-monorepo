@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"semo-server/internal/models"
 	"semo-server/internal/repositories"
+
 	"strings"
 
 	"github.com/google/uuid"
@@ -131,23 +132,49 @@ func (tps *TaskPermissionService) RevokePermission(taskID, profileID string) err
 
 // CheckPermission 특정 사용자가 태스크에 대한 권한이 있는지 확인
 func (tps *TaskPermissionService) CheckPermission(taskID, profileID string) (bool, error) {
-	var count int64
-	rootTaskID := tps.taskService.FindRootTaskID(taskID)
-	if strings.Contains(rootTaskID, "IP") {
-		hasPermission, err := tps.projectMemberService.CheckPermission(rootTaskID, profileID)
-		if err != nil {
+	currentTaskID := taskID
+
+	// 상위 태스크로 올라가면서 권한 확인
+	for currentTaskID != "" {
+		var count int64
+
+		// 현재 태스크 ID로 권한 확인
+		if err := tps.db.Model(&models.Entry{}).
+			Where("task_id = ? AND granted_to = ?", currentTaskID, profileID).
+			Count(&count).Error; err != nil {
 			return false, fmt.Errorf("권한 확인 실패: %w", err)
 		}
-		return hasPermission, nil
-	}
-	fmt.Println("rootTaskID", rootTaskID)
-	if err := tps.db.Model(&models.Entry{}).
-		Where("(task_id = ? OR root_task_id = ?) AND granted_to = ?", taskID, rootTaskID, profileID).
-		Count(&count).Error; err != nil {
-		return false, fmt.Errorf("권한 확인 실패: %w", err)
+
+		if count > 0 {
+			return true, nil
+		}
+
+		// 현재 태스크 정보 조회
+		var task models.Item
+		if err := tps.db.First(&task, "id = ? AND type = ?", currentTaskID, "task").Error; err != nil {
+			return false, fmt.Errorf("태스크를 찾을 수 없음: %w", err)
+		}
+
+		// parent_id가 없으면 권한 없음
+		if task.ParentID == nil || *task.ParentID == "" {
+			return false, nil
+		}
+
+		// parent_id가 IP로 시작하는지 확인
+		if strings.HasPrefix(*task.ParentID, "IP") {
+			// 프로젝트 멤버십 확인
+			hasPermission, err := tps.projectMemberService.CheckPermission(*task.ParentID, profileID)
+			if err != nil {
+				return false, fmt.Errorf("프로젝트 권한 확인 실패: %w", err)
+			}
+			return hasPermission, nil
+		}
+
+		// 상위 태스크로 이동
+		currentTaskID = *task.ParentID
 	}
 
-	return count > 0, nil
+	return false, nil
 }
 
 // GrantPermissionWithUUID 프로젝트 ID를 받아 UUID를 생성하고 권한을 부여하는 메서드
