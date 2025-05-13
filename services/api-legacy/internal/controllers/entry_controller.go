@@ -29,7 +29,14 @@ func NewEntryController(
 
 // ListEntries handles GET /entries
 func (ec *EntryController) ListEntries(c echo.Context) error {
-	profile, err := middlewares.GetProfileFromContext(c, ec.profileService)
+	// 미들웨어에서 이메일 가져오기
+	email, err := middlewares.GetEmailFromContext(c)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	// 서비스 계층에서 프로필 조회
+	profile, err := ec.profileService.GetOrCreateProfile(email)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}

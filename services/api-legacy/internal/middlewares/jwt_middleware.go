@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 	"semo-server/internal/logics"
-	"semo-server/internal/models"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -128,15 +127,14 @@ func GetEmailFromContext(c echo.Context) (string, error) {
 	return emailStr, nil
 }
 
-func GetProfileFromContext(c echo.Context, ps *logics.ProfileService) (*models.Profile, error) {
+// StoreEmailInContext는 컨텍스트에 이메일을 저장하는 함수입니다.
+// 이 함수는 미들웨어로 사용될 수 있습니다.
+func StoreEmailInContext(c echo.Context) error {
 	email, err := GetEmailFromContext(c)
 	if err != nil {
-		return nil, errors.New("failed to get email from context")
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "failed to get email from context"})
 	}
-
-	profile, err := ps.GetOrCreateProfile(email)
-	if err != nil {
-		return nil, errors.New("failed to get profile from context")
-	}
-	return profile, nil
+	
+	c.Set(emailIDKey, email)
+	return nil
 }

@@ -36,9 +36,14 @@ func (fc *FileController) UploadFile(c echo.Context) error {
 	if itemID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "item_id is required"})
 	}
+	// 미들웨어에서 이메일 가져오기
+	email, err := middlewares.GetEmailFromContext(c)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
 
-	// Check if the requesting user has write permission on the specified item.
-	profile, err := middlewares.GetProfileFromContext(c, fc.profileService)
+	// 서비스 계층에서 프로필 조회
+	profile, err := fc.profileService.GetOrCreateProfile(email)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -88,9 +93,14 @@ func (fc *FileController) DownloadFile(c echo.Context) error {
 	if err := repositories.DBS.Postgres.First(&fileRecord, "id = ?", fileID).Error; err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "file not found"})
 	}
+	// 미들웨어에서 이메일 가져오기
+	email, err := middlewares.GetEmailFromContext(c)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
 
-	// Check if the requesting user has read permission on the associated item.
-	profile, err := middlewares.GetProfileFromContext(c, fc.profileService)
+	// 서비스 계층에서 프로필 조회
+	profile, err := fc.profileService.GetOrCreateProfile(email)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -120,9 +130,14 @@ func (fc *FileController) ListFiles(c echo.Context) error {
 	if itemID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "item_id is required"})
 	}
+	// 미들웨어에서 이메일 가져오기
+	email, err := middlewares.GetEmailFromContext(c)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
 
-	// JWT 미들웨어에서 프로필 정보 추출
-	profile, err := middlewares.GetProfileFromContext(c, fc.profileService)
+	// 서비스 계층에서 프로필 조회
+	profile, err := fc.profileService.GetOrCreateProfile(email)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -164,9 +179,14 @@ func (fc *FileController) DeleteFile(c echo.Context) error {
 	if err := repositories.DBS.Postgres.First(&fileRecord, "id = ?", fileID).Error; err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "file not found"})
 	}
+	// 미들웨어에서 이메일 가져오기
+	email, err := middlewares.GetEmailFromContext(c)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
 
-	// JWT 미들웨어로부터 사용자 프로필 추출
-	profile, err := middlewares.GetProfileFromContext(c, fc.profileService)
+	// 서비스 계층에서 프로필 조회
+	profile, err := fc.profileService.GetOrCreateProfile(email)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}

@@ -85,8 +85,14 @@ func (kc *KickoffController) GeneratePreview(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 
-	// Retrieve profile from JWT middleware
-	profile, err := middlewares.GetProfileFromContext(ctx, kc.profileService)
+	// 미들웨어에서 이메일 가져오기
+	email, err := middlewares.GetEmailFromContext(ctx)
+	if err != nil {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	// 서비스 계층에서 프로필 조회
+	profile, err := kc.profileService.GetOrCreateProfile(email)
 	if err != nil {
 		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -127,8 +133,14 @@ func (kc *KickoffController) GeneratePreQuestions(ctx echo.Context) error {
 		})
 	}
 
-	// Retrieve profile from JWT middleware
-	profile, err := middlewares.GetProfileFromContext(ctx, kc.profileService)
+	// 미들웨어에서 이메일 가져오기
+	email, err := middlewares.GetEmailFromContext(ctx)
+	if err != nil {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	// 서비스 계층에서 프로필 조회
+	profile, err := kc.profileService.GetOrCreateProfile(email)
 	if err != nil {
 		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -158,8 +170,14 @@ func (kc *KickoffController) GenerateDetails(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 
-	// Retrieve profile from JWT middleware
-	profile, err := middlewares.GetProfileFromContext(ctx, kc.profileService)
+	// 미들웨어에서 이메일 가져오기
+	email, err := middlewares.GetEmailFromContext(ctx)
+	if err != nil {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	// 서비스 계층에서 프로필 조회
+	profile, err := kc.profileService.GetOrCreateProfile(email)
 	if err != nil {
 		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
