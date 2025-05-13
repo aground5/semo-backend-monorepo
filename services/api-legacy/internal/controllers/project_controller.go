@@ -3,7 +3,6 @@ package controllers
 import (
 	"net/http"
 	"semo-server/internal/logics"
-	"semo-server/internal/middlewares"
 	"semo-server/internal/models"
 	"semo-server/internal/utils"
 
@@ -12,9 +11,9 @@ import (
 
 // ProjectController 프로젝트 관련 HTTP 요청 처리
 type ProjectController struct {
+	BaseController
 	projectService       *logics.ProjectService
 	projectMemberService *logics.ProjectMemberService
-	profileService       *logics.ProfileService
 }
 
 // NewProjectController 새로운 ProjectController 인스턴스 생성
@@ -24,9 +23,9 @@ func NewProjectController(
 	profileService *logics.ProfileService,
 ) *ProjectController {
 	return &ProjectController{
+		BaseController: NewBaseController(profileService),
 		projectService:       projectService,
 		projectMemberService: projectMemberService,
-		profileService:       profileService,
 	}
 }
 
@@ -34,15 +33,7 @@ func NewProjectController(
 // GET /projects
 func (pc *ProjectController) ListUserProjects(c echo.Context) error {
 	// 컨텍스트에서 프로필 가져오기
-
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -68,14 +59,8 @@ func (pc *ProjectController) GetProject(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "프로젝트 ID가 필요합니다"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
 	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -109,14 +94,7 @@ func (pc *ProjectController) CreateProject(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -146,14 +124,7 @@ func (pc *ProjectController) UpdateProject(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -184,14 +155,7 @@ func (pc *ProjectController) DeleteProject(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "프로젝트 ID가 필요합니다"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -221,14 +185,7 @@ func (pc *ProjectController) ListProjectTasks(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "프로젝트 ID가 필요합니다"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -259,14 +216,7 @@ func (pc *ProjectController) ListProjectMembers(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "프로젝트 ID가 필요합니다"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -312,14 +262,7 @@ func (pc *ProjectController) InviteMemberToProject(c echo.Context) error {
 		input.Role = "member" // 기본 역할 설정
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -354,14 +297,7 @@ func (pc *ProjectController) RemoveMemberFromProject(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "사용자 ID가 필요합니다"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -409,14 +345,7 @@ func (pc *ProjectController) UpdateMemberRole(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "역할이 필요합니다"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -451,14 +380,7 @@ func (pc *ProjectController) GetMemberRole(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "사용자 ID가 필요합니다"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -484,14 +406,7 @@ func (pc *ProjectController) GetMemberRole(c echo.Context) error {
 // ListProjectInvitations 사용자의 프로젝트 초대 목록 조회
 // GET /projects/invitations
 func (pc *ProjectController) ListProjectInvitations(c echo.Context) error {
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := pc.profileService.GetOrCreateProfile(email)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -513,14 +428,7 @@ func (pc *ProjectController) AcceptProjectInvitation(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "초대 ID가 필요합니다"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	_, err = pc.profileService.GetOrCreateProfile(email)
+	_, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -541,14 +449,7 @@ func (pc *ProjectController) RejectProjectInvitation(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "초대 ID가 필요합니다"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	_, err = pc.profileService.GetOrCreateProfile(email)
+	_, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}

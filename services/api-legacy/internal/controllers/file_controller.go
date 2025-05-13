@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"semo-server/internal/logics"
-	"semo-server/internal/middlewares"
 	"semo-server/internal/models"
 	"semo-server/internal/repositories"
 
@@ -14,16 +13,16 @@ import (
 
 // FileController handles HTTP requests for file upload and download.
 type FileController struct {
+	BaseController
 	fileService           *logics.FileService
-	profileService        *logics.ProfileService
 	taskPermissionService *logics.TaskPermissionService
 }
 
 // NewFileController creates and returns a new FileController instance.
 func NewFileController(fileService *logics.FileService, profileService *logics.ProfileService, taskPermissionService *logics.TaskPermissionService) *FileController {
 	return &FileController{
+		BaseController: NewBaseController(profileService),
 		fileService:           fileService,
-		profileService:        profileService,
 		taskPermissionService: taskPermissionService,
 	}
 }
@@ -36,14 +35,7 @@ func (fc *FileController) UploadFile(c echo.Context) error {
 	if itemID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "item_id is required"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := fc.profileService.GetOrCreateProfile(email)
+	profile, err := fc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -93,14 +85,7 @@ func (fc *FileController) DownloadFile(c echo.Context) error {
 	if err := repositories.DBS.Postgres.First(&fileRecord, "id = ?", fileID).Error; err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "file not found"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := fc.profileService.GetOrCreateProfile(email)
+	profile, err := fc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -130,14 +115,7 @@ func (fc *FileController) ListFiles(c echo.Context) error {
 	if itemID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "item_id is required"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := fc.profileService.GetOrCreateProfile(email)
+	profile, err := fc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -179,14 +157,7 @@ func (fc *FileController) DeleteFile(c echo.Context) error {
 	if err := repositories.DBS.Postgres.First(&fileRecord, "id = ?", fileID).Error; err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "file not found"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := fc.profileService.GetOrCreateProfile(email)
+	profile, err := fc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"semo-server/configs"
 	"semo-server/internal/logics"
-	"semo-server/internal/middlewares"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -14,15 +13,15 @@ import (
 
 // KickoffController handles task kickoff operations
 type KickoffController struct {
+	BaseController
 	LlmService     *logics.LLMService
-	profileService *logics.ProfileService
 }
 
 // NewKickoffController creates a new instance of KickoffController
 func NewKickoffController(llmService *logics.LLMService, profileService *logics.ProfileService) *KickoffController {
 	return &KickoffController{
+		BaseController: NewBaseController(profileService),
 		LlmService:     llmService,
-		profileService: profileService,
 	}
 }
 
@@ -85,14 +84,7 @@ func (kc *KickoffController) GeneratePreview(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(ctx)
-	if err != nil {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := kc.profileService.GetOrCreateProfile(email)
+	profile, err := kc.GetProfileFromContext(ctx)
 	if err != nil {
 		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -133,14 +125,7 @@ func (kc *KickoffController) GeneratePreQuestions(ctx echo.Context) error {
 		})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(ctx)
-	if err != nil {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := kc.profileService.GetOrCreateProfile(email)
+	profile, err := kc.GetProfileFromContext(ctx)
 	if err != nil {
 		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -170,14 +155,7 @@ func (kc *KickoffController) GenerateDetails(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(ctx)
-	if err != nil {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := kc.profileService.GetOrCreateProfile(email)
+	profile, err := kc.GetProfileFromContext(ctx)
 	if err != nil {
 		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}

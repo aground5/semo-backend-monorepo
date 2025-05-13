@@ -3,15 +3,14 @@ package controllers
 import (
 	"net/http"
 	"semo-server/internal/logics"
-	"semo-server/internal/middlewares"
 
 	"github.com/labstack/echo/v4"
 )
 
 // TaskPermissionController 태스크 권한 관련 HTTP 요청 처리
 type TaskPermissionController struct {
+	BaseController
 	taskPermissionService *logics.TaskPermissionService
-	profileService        *logics.ProfileService
 }
 
 // NewTaskPermissionController 새로운 TaskPermissionController 인스턴스 생성
@@ -20,8 +19,8 @@ func NewTaskPermissionController(
 	profileService *logics.ProfileService,
 ) *TaskPermissionController {
 	return &TaskPermissionController{
+		BaseController: NewBaseController(profileService),
 		taskPermissionService: taskPermissionService,
-		profileService:        profileService,
 	}
 }
 
@@ -32,14 +31,8 @@ func (tpc *TaskPermissionController) GetPermissions(c echo.Context) error {
 	if taskID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "태스크 ID가 필요합니다"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
 
-	// 서비스 계층에서 프로필 조회
-	profile, err := tpc.profileService.GetOrCreateProfile(email)
+	profile, err := tpc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -82,14 +75,8 @@ func (tpc *TaskPermissionController) GrantPermission(c echo.Context) error {
 	if input.ProfileID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "프로필 ID가 필요합니다"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
 
-	// 서비스 계층에서 프로필 조회
-	profile, err := tpc.profileService.GetOrCreateProfile(email)
+	profile, err := tpc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -123,15 +110,8 @@ func (tpc *TaskPermissionController) RevokePermission(c echo.Context) error {
 	if profileID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "프로필 ID가 필요합니다"})
 	}
-	
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
 
-	// 서비스 계층에서 프로필 조회
-	profile, err := tpc.profileService.GetOrCreateProfile(email)
+	profile, err := tpc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}

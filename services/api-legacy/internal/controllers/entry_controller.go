@@ -3,7 +3,6 @@ package controllers
 import (
 	"net/http"
 	"semo-server/internal/logics"
-	"semo-server/internal/middlewares"
 	"semo-server/internal/utils"
 	"strconv"
 
@@ -12,7 +11,7 @@ import (
 
 // EntryController handles HTTP requests for entries.
 type EntryController struct {
-	profileService *logics.ProfileService
+	BaseController
 	entryService   *logics.EntryService
 }
 
@@ -22,21 +21,14 @@ func NewEntryController(
 	entryService *logics.EntryService,
 ) *EntryController {
 	return &EntryController{
-		profileService: profileService,
+		BaseController: NewBaseController(profileService),
 		entryService:   entryService,
 	}
 }
 
 // ListEntries handles GET /entries
 func (ec *EntryController) ListEntries(c echo.Context) error {
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := ec.profileService.GetOrCreateProfile(email)
+	profile, err := ec.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
