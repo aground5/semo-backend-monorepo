@@ -34,6 +34,7 @@ type dbs struct {
 	MongoDB  *mongo.Client
 }
 
+// Singleton 패턴으로 한번만 초기화
 var DBS dbs
 
 func Init() {
