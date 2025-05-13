@@ -126,15 +126,3 @@ func GetEmailFromContext(c echo.Context) (string, error) {
 	}
 	return emailStr, nil
 }
-
-// StoreEmailInContext는 컨텍스트에 이메일을 저장하는 함수입니다.
-// 이 함수는 미들웨어로 사용될 수 있습니다.
-func StoreEmailInContext(c echo.Context) error {
-	email, err := GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "failed to get email from context"})
-	}
-	
-	c.Set(emailIDKey, email)
-	return nil
-}

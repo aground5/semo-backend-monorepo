@@ -255,6 +255,7 @@ func (ac *AttributeController) DeleteAttribute(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "속성을 찾을 수 없습니다"})
 	}
+
 	// 미들웨어에서 이메일 가져오기
 	email, err := middlewares.GetEmailFromContext(c)
 	if err != nil {
