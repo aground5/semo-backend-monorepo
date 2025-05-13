@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"semo-server/internal/logics"
-	"semo-server/internal/middlewares"
 	"semo-server/internal/models"
 	"semo-server/internal/utils"
 
@@ -13,8 +12,8 @@ import (
 
 // TaskController handles HTTP requests for tasks.
 type TaskController struct {
+	BaseController
 	taskService           *logics.TaskService
-	profileService        *logics.ProfileService
 	taskPermissionService *logics.TaskPermissionService
 	projectMemberService  *logics.ProjectMemberService
 }
@@ -27,8 +26,8 @@ func NewTaskController(
 	projectMemberService *logics.ProjectMemberService,
 ) *TaskController {
 	return &TaskController{
+		BaseController: NewBaseController(profileService),
 		taskService:           taskService,
-		profileService:        profileService,
 		taskPermissionService: taskPermissionService,
 		projectMemberService:  projectMemberService,
 	}
@@ -40,14 +39,8 @@ func (tc *TaskController) GetTask(c echo.Context) error {
 	if taskID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "task id is required"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
 
-	// 서비스 계층에서 프로필 조회
-	profile, err := tc.profileService.GetOrCreateProfile(email)
+	profile, err := tc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -93,14 +86,8 @@ func (tc *TaskController) CreateTask(c echo.Context) error {
 	if input.Name == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name is required"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
 
-	// 서비스 계층에서 프로필 조회
-	profile, err := tc.profileService.GetOrCreateProfile(email)
+	profile, err := tc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -147,14 +134,8 @@ func (tc *TaskController) UpdateTask(c echo.Context) error {
 	if err := c.Bind(&updates); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
 
-	// 서비스 계층에서 프로필 조회
-	profile, err := tc.profileService.GetOrCreateProfile(email)
+	profile, err := tc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -210,14 +191,8 @@ func (tc *TaskController) DeleteTask(c echo.Context) error {
 	if taskID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "task id is required"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
 
-	// 서비스 계층에서 프로필 조회
-	profile, err := tc.profileService.GetOrCreateProfile(email)
+	profile, err := tc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -246,14 +221,8 @@ func (tc *TaskController) GetChildTasks(c echo.Context) error {
 	if parentID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "부모 task id가 필요합니다"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
 
-	// 서비스 계층에서 프로필 조회
-	profile, err := tc.profileService.GetOrCreateProfile(email)
+	profile, err := tc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}

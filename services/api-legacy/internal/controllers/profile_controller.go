@@ -12,14 +12,14 @@ import (
 
 // ProfileController는 프로필 관련 HTTP 요청을 처리합니다.
 type ProfileController struct {
-	profileService *logics.ProfileService
+	BaseController
 	searchService  *logics.SearchService
 }
 
 // NewProfileController는 ProfileController 인스턴스를 생성합니다.
 func NewProfileController(profileService *logics.ProfileService, searchService *logics.SearchService) *ProfileController {
 	return &ProfileController{
-		profileService: profileService,
+		BaseController: NewBaseController(profileService),
 		searchService:  searchService,
 	}
 }
@@ -31,12 +31,12 @@ func (pc *ProfileController) GetProfile(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 
-	profile, err := pc.profileService.GetOrCreateProfile(userEmail)
+	profile, err := pc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
-	profile, err = pc.profileService.UpdateProfile(userEmail, c.RealIP(), models.ProfileUpdate{})
+	profile, err = pc.ProfileService.UpdateProfile(userEmail, c.RealIP(), models.ProfileUpdate{})
 	return c.JSON(http.StatusOK, profile)
 }
 
@@ -53,7 +53,7 @@ func (pc *ProfileController) UpdateProfile(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 
-	updatedProfile, err := pc.profileService.UpdateProfile(userEmail, c.RealIP(), req)
+	updatedProfile, err := pc.ProfileService.UpdateProfile(userEmail, c.RealIP(), req)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -83,6 +83,16 @@ func (pc *ProfileController) SearchProfile(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+// GetProfileFromEmail은 컨텍스트에서 이메일을 가져와 프로필을 조회하거나 생성합니다.
+// 이 함수는 미들웨어에서 사용되던 로직을 컨트롤러로 이동한 것입니다.
+func (pc *ProfileController) GetProfileFromEmail(c echo.Context) (*models.Profile, error) {
+	profile, err := pc.GetProfileFromContext(c)
+	if err != nil {
+		return nil, err
+	}
+	return profile, nil
+}
+
 // CreateInvitedProfile는 이메일을 받아서 초대된 상태의 프로필을 생성하고 회원가입 이메일을 보냅니다.
 func (pc *ProfileController) CreateInvitedProfile(c echo.Context) error {
 	var req struct {
@@ -102,7 +112,7 @@ func (pc *ProfileController) CreateInvitedProfile(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid email format"})
 	}
 
-	profile, err := pc.profileService.CreateInvitedProfile(req.Email)
+	profile, err := pc.ProfileService.CreateInvitedProfile(req.Email)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}

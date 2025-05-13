@@ -3,7 +3,6 @@ package controllers
 import (
 	"net/http"
 	"semo-server/internal/logics"
-	"semo-server/internal/middlewares"
 	"semo-server/internal/models"
 	"semo-server/internal/repositories"
 
@@ -12,8 +11,8 @@ import (
 
 // SharePermissionController 공유 권한 관련 HTTP 요청 처리
 type SharePermissionController struct {
+	BaseController
 	taskPermissionService *logics.TaskPermissionService
-	profileService        *logics.ProfileService
 	shareService          *logics.ShareService
 }
 
@@ -24,8 +23,8 @@ func NewSharePermissionController(
 	shareService *logics.ShareService,
 ) *SharePermissionController {
 	return &SharePermissionController{
+		BaseController: NewBaseController(profileService),
 		taskPermissionService: taskPermissionService,
-		profileService:        profileService,
 		shareService:          shareService,
 	}
 }
@@ -37,14 +36,7 @@ func (spc *SharePermissionController) GetShareUUID(c echo.Context) error {
 	if taskID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "태스크 ID가 필요합니다"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := spc.profileService.GetOrCreateProfile(email)
+	profile, err := spc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -81,14 +73,7 @@ func (spc *SharePermissionController) GrantPermissionFromUUID(c echo.Context) er
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "프로젝트 ID가 필요합니다"})
 	}
 
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := spc.profileService.GetOrCreateProfile(email)
+	profile, err := spc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -132,14 +117,7 @@ func (spc *SharePermissionController) RevokePermissionFromUUID(c echo.Context) e
 	if uuid == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "UUID가 필요합니다"})
 	}
-	// 미들웨어에서 이메일 가져오기
-	email, err := middlewares.GetEmailFromContext(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	}
-
-	// 서비스 계층에서 프로필 조회
-	profile, err := spc.profileService.GetOrCreateProfile(email)
+	profile, err := spc.GetProfileFromContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
