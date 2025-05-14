@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 	"semo-server/internal/logics"
-	"semo-server/internal/models"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -126,17 +125,4 @@ func GetEmailFromContext(c echo.Context) (string, error) {
 		return "", errors.New("user id has invalid type")
 	}
 	return emailStr, nil
-}
-
-func GetProfileFromContext(c echo.Context, ps *logics.ProfileService) (*models.Profile, error) {
-	email, err := GetEmailFromContext(c)
-	if err != nil {
-		return nil, errors.New("failed to get email from context")
-	}
-
-	profile, err := ps.GetOrCreateProfile(email)
-	if err != nil {
-		return nil, errors.New("failed to get profile from context")
-	}
-	return profile, nil
 }

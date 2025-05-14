@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"semo-server/configs"
 	"semo-server/internal/logics"
-	"semo-server/internal/middlewares"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -14,15 +13,15 @@ import (
 
 // KickoffController handles task kickoff operations
 type KickoffController struct {
+	BaseController
 	LlmService     *logics.LLMService
-	profileService *logics.ProfileService
 }
 
 // NewKickoffController creates a new instance of KickoffController
 func NewKickoffController(llmService *logics.LLMService, profileService *logics.ProfileService) *KickoffController {
 	return &KickoffController{
+		BaseController: NewBaseController(profileService),
 		LlmService:     llmService,
-		profileService: profileService,
 	}
 }
 
@@ -85,8 +84,7 @@ func (kc *KickoffController) GeneratePreview(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 
-	// Retrieve profile from JWT middleware
-	profile, err := middlewares.GetProfileFromContext(ctx, kc.profileService)
+	profile, err := kc.GetProfileFromContext(ctx)
 	if err != nil {
 		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -127,8 +125,7 @@ func (kc *KickoffController) GeneratePreQuestions(ctx echo.Context) error {
 		})
 	}
 
-	// Retrieve profile from JWT middleware
-	profile, err := middlewares.GetProfileFromContext(ctx, kc.profileService)
+	profile, err := kc.GetProfileFromContext(ctx)
 	if err != nil {
 		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
@@ -158,8 +155,7 @@ func (kc *KickoffController) GenerateDetails(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 
-	// Retrieve profile from JWT middleware
-	profile, err := middlewares.GetProfileFromContext(ctx, kc.profileService)
+	profile, err := kc.GetProfileFromContext(ctx)
 	if err != nil {
 		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
