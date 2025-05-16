@@ -9,22 +9,21 @@ import (
 
 	"semo-server/internal/logics/attribute_engine"
 	"semo-server/internal/models"
+	"semo-server/internal/repositories"
 )
 
 // AttributeValueService provides business logic for attribute values.
-type AttributeValueService struct {
-	db *gorm.DB
-}
+type AttributeValueService struct {}
 
 // NewAttributeValueService creates and returns a new instance of AttributeValueService.
-func NewAttributeValueService(db *gorm.DB) *AttributeValueService {
-	return &AttributeValueService{db: db}
+func NewAttributeValueService() *AttributeValueService {
+	return &AttributeValueService{}
 }
 
 // GetAttributeValue retrieves an attribute value for a given attribute and task.
 func (avs *AttributeValueService) GetAttributeValue(attributeID int, taskID string) (*models.AttributeValue, error) {
 	var attrValue models.AttributeValue
-	err := avs.db.
+	err := repositories.DBS.Postgres.
 		Where("attribute_id = ? AND task_id = ?", attributeID, taskID).
 		First(&attrValue).Error
 
@@ -41,7 +40,7 @@ func (avs *AttributeValueService) GetAttributeValue(attributeID int, taskID stri
 // GetAttributeValuesByTask retrieves all attribute values for a specific task.
 func (avs *AttributeValueService) GetAttributeValuesByTask(taskID string) ([]models.AttributeValue, error) {
 	var values []models.AttributeValue
-	if err := avs.db.
+	if err := repositories.DBS.Postgres.
 		Where("task_id = ?", taskID).
 		Preload("Attribute").
 		Find(&values).Error; err != nil {
@@ -60,7 +59,7 @@ func (avs *AttributeValueService) EditAttributeValue(input *models.AttributeValu
 	}
 
 	var attr models.Attribute
-	if err := avs.db.First(&attr, input.AttributeID).Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&attr, input.AttributeID).Error; err != nil {
 		return nil, fmt.Errorf("failed to load attribute with id %d: %w", input.AttributeID, err)
 	}
 	attrType := strings.ToLower(attr.Type)
@@ -71,7 +70,7 @@ func (avs *AttributeValueService) EditAttributeValue(input *models.AttributeValu
 	}
 
 	var existing models.AttributeValue
-	err = avs.db.
+	err = repositories.DBS.Postgres.
 		Where("attribute_id = ? AND task_id = ?", input.AttributeID, input.TaskID).
 		First(&existing).Error
 
@@ -85,18 +84,18 @@ func (avs *AttributeValueService) EditAttributeValue(input *models.AttributeValu
 			TaskID:      input.TaskID,
 			Value:       cleanValue,
 		}
-		if err := avs.db.Create(&newValue).Error; err != nil {
+		if err := repositories.DBS.Postgres.Create(&newValue).Error; err != nil {
 			return nil, fmt.Errorf("failed to create attribute value: %w", err)
 		}
 		return &newValue, nil
 	}
 
 	// Update existing value
-	if err := avs.db.Model(&existing).Update("value", cleanValue).Error; err != nil {
+	if err := repositories.DBS.Postgres.Model(&existing).Update("value", cleanValue).Error; err != nil {
 		return nil, fmt.Errorf("failed to update attribute value: %w", err)
 	}
 
-	if err := avs.db.First(&existing, existing.ID).Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&existing, existing.ID).Error; err != nil {
 		return nil, fmt.Errorf("failed to retrieve updated attribute value: %w", err)
 	}
 	return &existing, nil
@@ -104,7 +103,7 @@ func (avs *AttributeValueService) EditAttributeValue(input *models.AttributeValu
 
 // DeleteAttributeValue deletes an attribute value by attribute ID and task ID.
 func (avs *AttributeValueService) DeleteAttributeValue(attributeID int, taskID string) error {
-	result := avs.db.
+	result := repositories.DBS.Postgres.
 		Where("attribute_id = ? AND task_id = ?", attributeID, taskID).
 		Delete(&models.AttributeValue{})
 

@@ -5,19 +5,18 @@ import (
 	"fmt"
 	"semo-server/configs"
 	"semo-server/internal/models"
+	"semo-server/internal/repositories"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 // UserTestService provides operations for managing user tests
-type UserTestService struct {
-	db *gorm.DB
-}
+type UserTestService struct {}
 
 // NewUserTestService creates a new instance of UserTestService
-func NewUserTestService(db *gorm.DB) *UserTestService {
-	return &UserTestService{db: db}
+func NewUserTestService() *UserTestService {
+	return &UserTestService{}
 }
 
 // CreateUserTest creates a new UserTests record with the given taskID and question
@@ -41,7 +40,7 @@ func (s *UserTestService) CreateUserTest(taskID string, question string, userID 
 		UserID:   userID,
 	}
 
-	result := s.db.Create(userTest)
+	result := repositories.DBS.Postgres.Create(userTest)
 	if result.Error != nil {
 		configs.Logger.Error("Failed to create user test",
 			zap.String("taskID", taskID),
@@ -70,7 +69,7 @@ func (s *UserTestService) UpdateLatestAnswer(taskID string, answer string, userI
 
 	// Find the most recent UserTests record for the taskID (the one with highest ID)
 	var userTest models.UserTests
-	result := s.db.Where("task_id = ? AND user_id = ?", taskID, userID).
+	result := repositories.DBS.Postgres.Where("task_id = ? AND user_id = ?", taskID, userID).
 		Order("id DESC").
 		First(&userTest)
 
@@ -90,7 +89,7 @@ func (s *UserTestService) UpdateLatestAnswer(taskID string, answer string, userI
 
 	// Update the answer
 	userTest.Answer = answer
-	updateResult := s.db.Save(&userTest)
+	updateResult := repositories.DBS.Postgres.Save(&userTest)
 	if updateResult.Error != nil {
 		configs.Logger.Error("Failed to update answer",
 			zap.Int("id", userTest.ID),
@@ -116,7 +115,7 @@ func (s *UserTestService) UpdateUserData(id int, userData string, userID string)
 
 	// Find the UserTests by ID and userID
 	var userTest models.UserTests
-	result := s.db.Where("id = ? AND user_id = ?", id, userID).First(&userTest)
+	result := repositories.DBS.Postgres.Where("id = ? AND user_id = ?", id, userID).First(&userTest)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			configs.Logger.Warn("UserTests not found for this user",
@@ -132,7 +131,7 @@ func (s *UserTestService) UpdateUserData(id int, userData string, userID string)
 
 	// Update the UserData
 	userTest.UserData = userData
-	updateResult := s.db.Save(&userTest)
+	updateResult := repositories.DBS.Postgres.Save(&userTest)
 	if updateResult.Error != nil {
 		configs.Logger.Error("Failed to update UserData",
 			zap.Int("id", id),

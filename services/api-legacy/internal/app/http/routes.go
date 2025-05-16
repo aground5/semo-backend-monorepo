@@ -21,27 +21,28 @@ func RegisterRoutes(e *echo.Echo) {
 	})
 
 	// 서비스 초기화를 위한 공통 의존성
-	db := repositories.DBS.Postgres
 	cursorManager := utils.NewCursorManager(configs.Configs.Secrets.CursorSecret)
 	configEngine := config_engine.NewProfileConfigEngine()
 
 	// 기본 서비스 초기화
 	profileService := logics.NewProfileService(configEngine)
-	teamService := logics.NewTeamService(db, profileService)
+	teamService := logics.NewTeamService(profileService)
 
 	// 다른 서비스들 초기화
-	attributeService := logics.NewAttributeService(db)
-	attributeValueService := logics.NewAttributeValueService(db)
-	userTestService := logics.NewUserTestService(db)
-	fileService := logics.NewFileService(repositories.DBS.S3, configs.Configs.S3.BucketName, db) // S3 클라이언트 추가 필요
+	attributeService := logics.NewAttributeService()
+	attributeValueService := logics.NewAttributeValueService()
+	userTestService := logics.NewUserTestService()
+	fileService := logics.NewFileService(repositories.DBS.S3, configs.Configs.S3.BucketName) // S3 클라이언트 추가 필요
 	entryService := logics.NewEntryService(cursorManager)
 	shareService := logics.NewShareService(cursorManager)
-	taskService := logics.NewTaskService(db, cursorManager, entryService)
+	taskService := logics.NewTaskService(cursorManager, entryService)
 	projectService := logics.NewProjectService(cursorManager)
-	projectMemberService := logics.NewProjectMemberService(db, profileService, teamService)
-	taskPermissionService := logics.NewTaskPermissionService(taskService, entryService, shareService, projectMemberService, db)
-	searchService := logics.NewSearchService(db, cursorManager, taskPermissionService, projectMemberService, taskService)
-	llmService := logics.NewLLMService(db, taskService, userTestService)
+
+	//db 사용
+	projectMemberService := logics.NewProjectMemberService(profileService, teamService)
+	taskPermissionService := logics.NewTaskPermissionService(taskService, entryService, shareService, projectMemberService)
+	searchService := logics.NewSearchService(cursorManager, taskPermissionService, projectMemberService, taskService)
+	llmService := logics.NewLLMService(repositories.DBS.Postgres, taskService, userTestService)
 
 	// 컨트롤러 초기화 - 필요한 서비스 주입
 	attributeController := controllers.NewAttributeController(attributeService, attributeValueService, profileService, taskPermissionService)

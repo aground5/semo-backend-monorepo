@@ -4,21 +4,20 @@ import (
 	"errors"
 	"fmt"
 	"semo-server/internal/models"
+	"semo-server/internal/repositories"
 
 	"gorm.io/gorm"
 )
 
 // ProjectMemberService handles project member-related business logic
 type ProjectMemberService struct {
-	db             *gorm.DB
 	teamService    *TeamService
 	profileService *ProfileService
 }
 
 // NewProjectMemberService creates a new instance of ProjectMemberService
-func NewProjectMemberService(db *gorm.DB, profileService *ProfileService, teamService *TeamService) *ProjectMemberService {
+func NewProjectMemberService(profileService *ProfileService, teamService *TeamService) *ProjectMemberService {
 	return &ProjectMemberService{
-		db:             db,
 		teamService:    teamService,
 		profileService: profileService,
 	}
@@ -27,7 +26,7 @@ func NewProjectMemberService(db *gorm.DB, profileService *ProfileService, teamSe
 // GetProjectTeam retrieves the team associated with a project
 func (s *ProjectMemberService) GetProjectTeam(projectID string) (*models.Team, error) {
 	var team models.Team
-	if err := s.db.Where("project_id = ?", projectID).First(&team).Error; err != nil {
+	if err := repositories.DBS.Postgres.Where("project_id = ?", projectID).First(&team).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("no team found for project with ID %s", projectID)
 		}
@@ -57,7 +56,7 @@ func (s *ProjectMemberService) ListProjectMembers(projectID string) ([]models.Te
 func (s *ProjectMemberService) AddMemberToProject(projectID, userID, inviterID, role string) error {
 	// 1. Verify the project exists
 	var project models.Item
-	if err := s.db.First(&project, "id = ? AND type = ?", projectID, "project").Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&project, "id = ? AND type = ?", projectID, "project").Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("project with id %s not found", projectID)
 		}
@@ -136,7 +135,7 @@ func (s *ProjectMemberService) GetProjectMember(projectID, userID string) (*mode
 
 	// 2. Find the specific membership
 	var membership models.TeamMember
-	if err := s.db.Where("team_id = ? AND user_id = ?", team.ID, userID).
+	if err := repositories.DBS.Postgres.Where("team_id = ? AND user_id = ?", team.ID, userID).
 		Preload("Profile").
 		First(&membership).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -158,7 +157,7 @@ func (s *ProjectMemberService) CheckPermission(projectID, userID string) (bool, 
 
 	// 2. Check if the user is a member of the team
 	var membership models.TeamMember
-	err = s.db.Where("team_id = ? AND user_id = ?", team.ID, userID).First(&membership).Error
+	err = repositories.DBS.Postgres.Where("team_id = ? AND user_id = ?", team.ID, userID).First(&membership).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, nil // User is not a member, but this is not an error

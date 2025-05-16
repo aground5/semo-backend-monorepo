@@ -22,15 +22,13 @@ type TaskResult struct {
 
 // TaskService provides business logic for tasks.
 type TaskService struct {
-	db            *gorm.DB
 	cursorManager *utils.CursorManager
 	entryService  *EntryService
 }
 
 // NewTaskService creates a new TaskService instance.
-func NewTaskService(db *gorm.DB, cursorManager *utils.CursorManager, entryService *EntryService) *TaskService {
+func NewTaskService(cursorManager *utils.CursorManager, entryService *EntryService) *TaskService {
 	return &TaskService{
-		db:            db,
 		cursorManager: cursorManager,
 		entryService:  entryService,
 	}
