@@ -10,6 +10,7 @@ import (
 
 	"semo-server/internal/logics/attribute_engine"
 	"semo-server/internal/models"
+	"semo-server/internal/repositories"
 )
 
 // AttributeValueUpdate is used for partial updates of an attribute value.
@@ -24,20 +25,17 @@ type AttributeResult struct {
 
 // AttributeService provides business logic for attributes.
 type AttributeService struct {
-	db *gorm.DB
 }
 
 // NewAttributeService creates and returns a new instance of AttributeService.
-func NewAttributeService(db *gorm.DB) *AttributeService {
-	return &AttributeService{
-		db: db,
-	}
+func NewAttributeService() *AttributeService {
+	return &AttributeService{}
 }
 
 // GetAttributesByRootTask retrieves all attributes for a specific root task.
 func (as *AttributeService) GetAttributesByRootTask(rootTaskID string) ([]models.Attribute, error) {
 	var attributes []models.Attribute
-	if err := as.db.
+	if err := repositories.DBS.Postgres.
 		Where("root_task_id = ?", rootTaskID).
 		Order("position ASC").
 		Find(&attributes).Error; err != nil {
@@ -97,7 +95,7 @@ func (as *AttributeService) CreateAttribute(input models.Attribute, leftAttrID *
 	} else {
 		// leftAttrID가 없으면, 루트 태스크 내 최대 position + 1 사용
 		var maxPos decimal.Decimal
-		if err := as.db.
+		if err := repositories.DBS.Postgres.
 			Model(&models.Attribute{}).
 			Where("root_task_id = ?", input.RootTaskID).
 			Select("COALESCE(MAX(position), 0)").
@@ -108,7 +106,7 @@ func (as *AttributeService) CreateAttribute(input models.Attribute, leftAttrID *
 	}
 
 	// 4. DB에 저장
-	if err := as.db.Create(&input).Error; err != nil {
+	if err := repositories.DBS.Postgres.Create(&input).Error; err != nil {
 		return nil, fmt.Errorf("failed to create attribute: %w", err)
 	}
 	return &input, nil
@@ -117,7 +115,7 @@ func (as *AttributeService) CreateAttribute(input models.Attribute, leftAttrID *
 // GetAttribute retrieves an attribute by its ID.
 func (as *AttributeService) GetAttribute(attributeID int) (*models.Attribute, error) {
 	var attr models.Attribute
-	if err := as.db.First(&attr, attributeID).Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&attr, attributeID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("attribute with id %d not found", attributeID)
 		}
@@ -130,7 +128,7 @@ func (as *AttributeService) GetAttribute(attributeID int) (*models.Attribute, er
 // 직접적인 position 업데이트는 허용하지 않고, left_attr_id를 통해서만 재배치가 가능합니다.
 func (as *AttributeService) UpdateAttribute(attributeID int, updates models.AttributeUpdate) (*models.Attribute, error) {
 	var attr models.Attribute
-	if err := as.db.First(&attr, attributeID).Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&attr, attributeID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("attribute with id %d not found", attributeID)
 		}
@@ -206,11 +204,11 @@ func (as *AttributeService) UpdateAttribute(attributeID int, updates models.Attr
 		return &attr, nil
 	}
 
-	if err := as.db.Model(&attr).Updates(updateMap).Error; err != nil {
+	if err := repositories.DBS.Postgres.Model(&attr).Updates(updateMap).Error; err != nil {
 		return nil, fmt.Errorf("failed to update attribute: %w", err)
 	}
 
-	if err := as.db.First(&attr, attributeID).Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&attr, attributeID).Error; err != nil {
 		return nil, err
 	}
 	return &attr, nil
@@ -219,7 +217,7 @@ func (as *AttributeService) UpdateAttribute(attributeID int, updates models.Attr
 // DeleteAttribute removes an attribute from the database.
 func (as *AttributeService) DeleteAttribute(attributeID int) error {
 	var attr models.Attribute
-	if err := as.db.First(&attr, attributeID).Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&attr, attributeID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("attribute with id %d not found", attributeID)
 		}
@@ -227,7 +225,7 @@ func (as *AttributeService) DeleteAttribute(attributeID int) error {
 	}
 
 	// Start transaction
-	tx := as.db.Begin()
+	tx := repositories.DBS.Postgres.Begin()
 	if tx.Error != nil {
 		return fmt.Errorf("failed to begin delete transaction: %w", tx.Error)
 	}
@@ -252,7 +250,7 @@ func (as *AttributeService) GetAttributeOfRootTask(rootTaskID string) ([]models.
 	var attributes []models.Attribute
 
 	// 루트 태스크 ID로 속성 조회
-	if err := as.db.Where("root_task_id = ?", rootTaskID).Order("position ASC").Find(&attributes).Error; err != nil {
+	if err := repositories.DBS.Postgres.Where("root_task_id = ?", rootTaskID).Order("position ASC").Find(&attributes).Error; err != nil {
 		return nil, fmt.Errorf("루트 태스크 ID %s의 속성 조회 실패: %w", rootTaskID, err)
 	}
 
@@ -266,7 +264,7 @@ func (as *AttributeService) GetAttributeOfRootTask(rootTaskID string) ([]models.
 // If excludeAttrID is 0, then no exclusion occurs (used for create).
 func (as *AttributeService) recalcNewPositionForUpdate(rootTaskID string, leftAttrID int, excludeAttrID int) (decimal.Decimal, error) {
 	var leftAttr models.Attribute
-	if err := as.db.First(&leftAttr, leftAttrID).Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&leftAttr, leftAttrID).Error; err != nil {
 		return decimal.Zero, fmt.Errorf("failed to find left attribute with id %d: %w", leftAttrID, err)
 	}
 	if leftAttr.RootTaskID != rootTaskID {
@@ -290,7 +288,7 @@ func (as *AttributeService) recalcNewPositionForUpdate(rootTaskID string, leftAt
 		}
 
 		// 리밸런싱 후, leftAttr 재조회
-		if err := as.db.First(&leftAttr, leftAttr.ID).Error; err != nil {
+		if err := repositories.DBS.Postgres.First(&leftAttr, leftAttr.ID).Error; err != nil {
 			return decimal.Zero, fmt.Errorf("failed to re-fetch left attribute after rebalancing: %w", err)
 		}
 
@@ -308,7 +306,7 @@ func (as *AttributeService) recalcNewPositionForUpdate(rootTaskID string, leftAt
 // findRightAttribute finds the next attribute to the right of the given position.
 func (as *AttributeService) findRightAttribute(rootTaskID string, position decimal.Decimal, excludeAttrID int) (*models.Attribute, error) {
 	var rightAttr models.Attribute
-	err := as.db.
+	err := repositories.DBS.Postgres.
 		Where("root_task_id = ? AND position > ? AND id <> ?", rootTaskID, position, excludeAttrID).
 		Order("position ASC").
 		First(&rightAttr).Error
@@ -321,7 +319,7 @@ func (as *AttributeService) findRightAttribute(rootTaskID string, position decim
 // rebalanceAttributes rebalances all attributes' positions for a given root task.
 // It assigns new sequential positions (1, 2, 3, ...) to all attributes.
 func (as *AttributeService) rebalanceAttributes(rootTaskID string) error {
-	tx := as.db.Begin()
+	tx := repositories.DBS.Postgres.Begin()
 	if tx.Error != nil {
 		return fmt.Errorf("failed to begin rebalancing transaction: %w", tx.Error)
 	}

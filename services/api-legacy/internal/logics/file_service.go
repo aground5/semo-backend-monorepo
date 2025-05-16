@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"semo-server/internal/models"
+	"semo-server/internal/repositories"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 // FileService provides functionality to upload files to S3 and generate download links.
@@ -22,17 +22,15 @@ type FileService struct {
 	s3Client      *s3.Client
 	bucketName    string
 	presignClient *s3.PresignClient
-	db            *gorm.DB
 }
 
 // NewFileService creates a new instance of FileService.
-func NewFileService(s3Client *s3.Client, bucketName string, db *gorm.DB) *FileService {
+func NewFileService(s3Client *s3.Client, bucketName string) *FileService {
 	presignClient := s3.NewPresignClient(s3Client)
 	return &FileService{
 		s3Client:      s3Client,
 		bucketName:    bucketName,
 		presignClient: presignClient,
-		db:            db,
 	}
 }
 
@@ -80,7 +78,7 @@ func (fs *FileService) UploadFile(ctx context.Context, itemID string, file multi
 		UpdatedAt:     time.Now(),
 	}
 
-	if err := fs.db.Create(&newFile).Error; err != nil {
+	if err := repositories.DBS.Postgres.Create(&newFile).Error; err != nil {
 		return nil, fmt.Errorf("failed to create file record: %w", err)
 	}
 
@@ -91,7 +89,7 @@ func (fs *FileService) UploadFile(ctx context.Context, itemID string, file multi
 func (fs *FileService) GetDownloadLink(ctx context.Context, fileID uuid.UUID, itemID string) (string, error) {
 	// Retrieve the file record from the database.
 	var fileRecord models.File
-	if err := fs.db.First(&fileRecord, "id = ?", fileID).Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&fileRecord, "id = ?", fileID).Error; err != nil {
 		return "", fmt.Errorf("failed to get file record: %w", err)
 	}
 
@@ -116,7 +114,7 @@ func (fs *FileService) GetDownloadLink(ctx context.Context, fileID uuid.UUID, it
 // ListFilesByItem retrieves all File records associated with the given itemID.
 func (fs *FileService) ListFilesByItem(ctx context.Context, itemID string) ([]models.File, error) {
 	var files []models.File
-	if err := fs.db.Where("item_id = ?", itemID).Find(&files).Error; err != nil {
+	if err := repositories.DBS.Postgres.Where("item_id = ?", itemID).Find(&files).Error; err != nil {
 		return nil, fmt.Errorf("failed to list files for item %s: %w", itemID, err)
 	}
 	return files, nil
@@ -126,7 +124,7 @@ func (fs *FileService) ListFilesByItem(ctx context.Context, itemID string) ([]mo
 func (fs *FileService) DeleteFile(ctx context.Context, fileID uuid.UUID, itemID string) error {
 	// 파일 레코드를 DB에서 조회합니다.
 	var fileRecord models.File
-	if err := fs.db.First(&fileRecord, "id = ?", fileID).Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&fileRecord, "id = ?", fileID).Error; err != nil {
 		return fmt.Errorf("failed to find file record: %w", err)
 	}
 
@@ -144,7 +142,7 @@ func (fs *FileService) DeleteFile(ctx context.Context, fileID uuid.UUID, itemID 
 	}
 
 	// DB에서 파일 레코드를 삭제합니다.
-	if err := fs.db.Delete(&fileRecord).Error; err != nil {
+	if err := repositories.DBS.Postgres.Delete(&fileRecord).Error; err != nil {
 		return fmt.Errorf("failed to delete file record from db: %w", err)
 	}
 

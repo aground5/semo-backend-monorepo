@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"semo-server/configs"
 	"semo-server/internal/models"
+	"semo-server/internal/repositories"
 	"semo-server/internal/utils"
 
 	"gorm.io/gorm"
@@ -12,14 +13,12 @@ import (
 
 // TeamService handles team-related business logic
 type TeamService struct {
-	db             *gorm.DB
 	profileService *ProfileService
 }
 
 // NewTeamService creates a new instance of TeamService
-func NewTeamService(db *gorm.DB, profileSvc *ProfileService) *TeamService {
+func NewTeamService(profileSvc *ProfileService) *TeamService {
 	return &TeamService{
-		db:             db,
 		profileService: profileSvc,
 	}
 }
@@ -29,7 +28,7 @@ func (s *TeamService) GetTeamByID(id string, preloads ...string) (*models.Team, 
 	var team models.Team
 
 	// Start building the query
-	query := s.db
+	query := repositories.DBS.Postgres
 
 	// Add preloads if specified
 	for _, preload := range preloads {
@@ -66,7 +65,7 @@ func (s *TeamService) CreateTeam(name, description, photoURL string, creatorID s
 	}
 
 	// Start a transaction
-	tx := s.db.Begin()
+	tx := repositories.DBS.Postgres.Begin()
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
@@ -136,7 +135,7 @@ func (s *TeamService) UpdateTeam(id string, updates models.TeamUpdate) (*models.
 
 	// If there are updates to apply
 	if len(updateMap) > 0 {
-		if err := s.db.Model(team).Updates(updateMap).Error; err != nil {
+		if err := repositories.DBS.Postgres.Model(team).Updates(updateMap).Error; err != nil {
 			return nil, err
 		}
 	}
@@ -149,7 +148,7 @@ func (s *TeamService) UpdateTeam(id string, updates models.TeamUpdate) (*models.
 func (s *TeamService) ListTeamMembers(teamID string) ([]models.TeamMember, error) {
 	var members []models.TeamMember
 
-	if err := s.db.Preload("Profile").Where("team_id = ?", teamID).Find(&members).Error; err != nil {
+	if err := repositories.DBS.Postgres.Preload("Profile").Where("team_id = ?", teamID).Find(&members).Error; err != nil {
 		return nil, err
 	}
 
@@ -192,7 +191,7 @@ func (s *TeamService) InviteUserToTeam(teamID, userID, inviterID, role string) e
 
 	// Check if the user is already a member
 	var existingMembership models.TeamMember
-	err = s.db.Where("team_id = ? AND user_id = ?", teamID, userID).First(&existingMembership).Error
+	err = repositories.DBS.Postgres.Where("team_id = ? AND user_id = ?", teamID, userID).First(&existingMembership).Error
 
 	// Generate a unique ID for the membership if needed
 	var membershipID string
@@ -205,7 +204,7 @@ func (s *TeamService) InviteUserToTeam(teamID, userID, inviterID, role string) e
 
 		// Update the existing membership
 		membershipID = existingMembership.ID
-		err = s.db.Model(&existingMembership).Updates(map[string]interface{}{
+		err = repositories.DBS.Postgres.Model(&existingMembership).Updates(map[string]interface{}{
 			"status":     "invited",
 			"role":       role,
 			"invited_by": inviterID,
@@ -234,7 +233,7 @@ func (s *TeamService) InviteUserToTeam(teamID, userID, inviterID, role string) e
 			InvitedBy: inviterID,
 		}
 
-		if err := s.db.Create(&membership).Error; err != nil {
+		if err := repositories.DBS.Postgres.Create(&membership).Error; err != nil {
 			return err
 		}
 	}
@@ -264,7 +263,7 @@ func (s *TeamService) AcceptTeamInvitation(membershipID string) error {
 	var membership models.TeamMember
 
 	// Find the invitation
-	if err := s.db.First(&membership, "id = ? AND status = ?", membershipID, "invited").Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&membership, "id = ? AND status = ?", membershipID, "invited").Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.New("invitation not found or already processed")
 		}
@@ -272,7 +271,7 @@ func (s *TeamService) AcceptTeamInvitation(membershipID string) error {
 	}
 
 	// Update the status to active
-	return s.db.Model(&membership).Update("status", "active").Error
+	return repositories.DBS.Postgres.Model(&membership).Update("status", "active").Error
 }
 
 // RejectTeamInvitation lets a user reject an invitation to join a team
@@ -280,7 +279,7 @@ func (s *TeamService) RejectTeamInvitation(membershipID string) error {
 	var membership models.TeamMember
 
 	// Find the invitation
-	if err := s.db.First(&membership, "id = ? AND status = ?", membershipID, "invited").Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&membership, "id = ? AND status = ?", membershipID, "invited").Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.New("invitation not found or already processed")
 		}
@@ -288,7 +287,7 @@ func (s *TeamService) RejectTeamInvitation(membershipID string) error {
 	}
 
 	// Update the status to rejected
-	return s.db.Model(&membership).Update("status", "rejected").Error
+	return repositories.DBS.Postgres.Model(&membership).Update("status", "rejected").Error
 }
 
 // RemoveUserFromTeam removes a user from a team
@@ -296,7 +295,7 @@ func (s *TeamService) RemoveUserFromTeam(teamID, userID string) error {
 	var membership models.TeamMember
 
 	// Find the membership
-	if err := s.db.Where("team_id = ? AND user_id = ? AND status = ?", teamID, userID, "active").First(&membership).Error; err != nil {
+	if err := repositories.DBS.Postgres.Where("team_id = ? AND user_id = ? AND status = ?", teamID, userID, "active").First(&membership).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.New("user is not an active member of this team")
 		}
@@ -304,7 +303,7 @@ func (s *TeamService) RemoveUserFromTeam(teamID, userID string) error {
 	}
 
 	// Soft delete the membership
-	return s.db.Delete(&membership).Error
+	return repositories.DBS.Postgres.Delete(&membership).Error
 }
 
 // UpdateMemberRole updates a team member's role
@@ -312,7 +311,7 @@ func (s *TeamService) UpdateMemberRole(teamID, userID, newRole string) error {
 	var membership models.TeamMember
 
 	// Find the membership
-	if err := s.db.Where("team_id = ? AND user_id = ? AND status = ?", teamID, userID, "active").First(&membership).Error; err != nil {
+		if err := repositories.DBS.Postgres.Where("team_id = ? AND user_id = ? AND status = ?", teamID, userID, "active").First(&membership).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.New("user is not an active member of this team")
 		}
@@ -320,14 +319,14 @@ func (s *TeamService) UpdateMemberRole(teamID, userID, newRole string) error {
 	}
 
 	// Update the role
-	return s.db.Model(&membership).Update("role", newRole).Error
+	return repositories.DBS.Postgres.Model(&membership).Update("role", newRole).Error
 }
 
 // ListUserInvitations retrieves all pending invitations for a user
 func (s *TeamService) ListUserInvitations(userID string) ([]models.TeamMember, error) {
 	var invitations []models.TeamMember
 
-	if err := s.db.Preload("Team").Preload("Inviter").
+	if err := repositories.DBS.Postgres.Preload("Team").Preload("Inviter").
 		Where("user_id = ? AND status = ?", userID, "invited").
 		Find(&invitations).Error; err != nil {
 		return nil, err
