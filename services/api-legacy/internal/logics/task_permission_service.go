@@ -140,7 +140,6 @@ func (tps *TaskPermissionService) CheckPermission(taskID, profileID string) (boo
 		}
 		return hasPermission, nil
 	}
-	fmt.Println("rootTaskID", rootTaskID)
 	if err := tps.db.Model(&models.Entry{}).
 		Where("(task_id = ? OR root_task_id = ?) AND granted_to = ?", taskID, rootTaskID, profileID).
 		Count(&count).Error; err != nil {

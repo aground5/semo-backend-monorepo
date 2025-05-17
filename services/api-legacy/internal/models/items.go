@@ -47,6 +47,10 @@ type ItemUpdate struct {
 	Role        *string `json:"role"`
 }
 
+type ItemInvite struct {
+	Email string `json:"email"`
+}
+
 type ItemDependencies struct {
 	ItemID       string `gorm:"type:char(13);primaryKey" json:"item_id"`
 	DependencyID string `gorm:"type:char(13);primaryKey" json:"dependency_id"`

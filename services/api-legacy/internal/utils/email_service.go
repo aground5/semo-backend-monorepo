@@ -2,7 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"semo-server/configs"
 
 	"gopkg.in/gomail.v2"
 )
@@ -518,12 +517,4 @@ func (s *EmailService) SendRegistrationInvitationEmail(from, to, userName, regis
 	htmlBody := s.GenerateRegistrationInvitationEmailHTML(userName, registrationURL)
 
 	return s.SendEmail(from, to, subject, htmlBody)
-}
-
-// Global instance of EmailService
-var EmailSvc = NewEmailService(configs.Configs.Email.SMTPHost, configs.Configs.Email.SMTPPort, configs.Configs.Email.Username, configs.Configs.Email.Password)
-
-// Compatibility function for existing code - delegates to EmailSvc
-func SendEmail(from, to, subject, htmlBody string) error {
-	return EmailSvc.SendEmail(from, to, subject, htmlBody)
 }

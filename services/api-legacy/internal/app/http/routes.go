@@ -23,11 +23,12 @@ func RegisterRoutes(e *echo.Echo) {
 	// 서비스 초기화를 위한 공통 의존성
 	db := repositories.DBS.Postgres
 	cursorManager := utils.NewCursorManager(configs.Configs.Secrets.CursorSecret)
+	emailService := utils.NewEmailService(configs.Configs.Email.SMTPHost, configs.Configs.Email.SMTPPort, configs.Configs.Email.Username, configs.Configs.Email.Password)
 	configEngine := config_engine.NewProfileConfigEngine()
 
 	// 기본 서비스 초기화
-	profileService := logics.NewProfileService(configEngine)
-	teamService := logics.NewTeamService(db, profileService)
+	profileService := logics.NewProfileService(configEngine, emailService)
+	teamService := logics.NewTeamService(db, profileService, emailService)
 
 	// 다른 서비스들 초기화
 	attributeService := logics.NewAttributeService(db)
@@ -50,7 +51,7 @@ func RegisterRoutes(e *echo.Echo) {
 	kickoffController := controllers.NewKickoffController(llmService, profileService)
 	profileController := controllers.NewProfileController(profileService, searchService)
 	projectController := controllers.NewProjectController(projectService, projectMemberService, profileService)
-	taskController := controllers.NewTaskController(taskService, profileService, taskPermissionService, projectMemberService)
+	taskController := controllers.NewTaskController(taskService, profileService, taskPermissionService, projectMemberService, entryService, attributeService, attributeValueService)
 	taskPermissionController := controllers.NewTaskPermissionController(taskPermissionService, profileService)
 	shareController := controllers.NewShareController(taskPermissionService)
 	sharePermissionController := controllers.NewSharePermissionController(taskPermissionService, profileService, shareService)
@@ -78,6 +79,7 @@ func RegisterRoutes(e *echo.Echo) {
 	// 태스크 권한 관련 엔드포인트
 	apiV1.GET("/tasks/:id/permissions", taskPermissionController.GetPermissions)
 	apiV1.POST("/tasks/:id/permissions", taskPermissionController.GrantPermission)
+	apiV1.POST("/tasks/:id/invite", taskController.InviteNewParticipant)
 	apiV1.DELETE("/tasks/:id/permissions/:profile_id", taskPermissionController.RevokePermission)
 	//apiV1.GET("/tasks/:id/permissions/:profile_id/check", taskPermissionController.CheckPermission)
 

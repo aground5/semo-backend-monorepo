@@ -17,6 +17,9 @@ type TaskController struct {
 	profileService        *logics.ProfileService
 	taskPermissionService *logics.TaskPermissionService
 	projectMemberService  *logics.ProjectMemberService
+	entryService          *logics.EntryService
+	attributeService      *logics.AttributeService
+	attributeValueService *logics.AttributeValueService
 }
 
 // NewTaskController returns a new instance of TaskAPIController.
@@ -25,12 +28,18 @@ func NewTaskController(
 	profileService *logics.ProfileService,
 	taskPermissionService *logics.TaskPermissionService,
 	projectMemberService *logics.ProjectMemberService,
+	entryService *logics.EntryService,
+	attributeService *logics.AttributeService,
+	attributeValueService *logics.AttributeValueService,
 ) *TaskController {
 	return &TaskController{
 		taskService:           taskService,
 		profileService:        profileService,
 		taskPermissionService: taskPermissionService,
 		projectMemberService:  projectMemberService,
+		entryService:          entryService,
+		attributeService:      attributeService,
+		attributeValueService: attributeValueService,
 	}
 }
 
@@ -253,4 +262,85 @@ func (tc *TaskController) GetChildTasks(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, result)
+}
+
+// InviteNewParticipant handles POST /tasks/:id/invite
+func (tc *TaskController) InviteNewParticipant(c echo.Context) error {
+	profile, err := middlewares.GetProfileFromContext(c, tc.profileService)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	taskID := c.Param("id")
+	if taskID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "task id is required"})
+	}
+
+	task, err := tc.taskService.GetTask(taskID)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	hasPermission, err := tc.taskPermissionService.CheckPermission(taskID, profile.ID)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+	if !hasPermission {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have the permission"})
+	}
+
+	// request body 파싱
+	var invite models.ItemInvite
+	if err := c.Bind(&invite); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	if invite.Email == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "email is required"})
+	}
+
+	// 초대 프로필 생성 및 메일 발송
+	invitedProfile, err := tc.profileService.CreateInvitedProfile(invite.Email)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	rootTaskID := tc.taskService.FindRootTaskID(task.ID)
+
+	// Entry 생성
+	entry := &models.Entry{
+		Name:       task.Name,
+		TaskID:     task.ID,
+		RootTaskID: rootTaskID,
+		CreatedBy:  profile.ID,
+		GrantedTo:  invitedProfile.ID,
+	}
+	if _, err := tc.entryService.CreateEntry(entry); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Attribute 생성
+	attribute := models.Attribute{
+		RootTaskID: rootTaskID,
+		Name:       "task_participant",
+		Type:       "people",
+	}
+
+	attr, err := tc.attributeService.CreateAttribute(attribute, nil)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// AttributeValue 생성
+	attrValueUpdate := &models.AttributeValueUpdate{
+		AttributeID: attr.ID,
+		TaskID:      task.ID,
+		Value:       invitedProfile.ID,
+	}
+
+	if _, err := tc.attributeValueService.EditAttributeValue(attrValueUpdate); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "초대 메일 발송 완료"})
 }

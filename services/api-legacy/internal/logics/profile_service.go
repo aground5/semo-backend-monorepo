@@ -18,12 +18,14 @@ import (
 type ProfileService struct {
 	// ProfileConfigEngine을 주입받거나 내부에서 생성할 수 있습니다.
 	configEngine config_engine.ConfigEngine
+	emailService *utils.EmailService
 }
 
 // NewProfileService는 ProfileService 인스턴스를 반환합니다.
-func NewProfileService(configEngine config_engine.ConfigEngine) *ProfileService {
+func NewProfileService(configEngine config_engine.ConfigEngine, emailService *utils.EmailService) *ProfileService {
 	return &ProfileService{
 		configEngine: configEngine,
+		emailService: emailService,
 	}
 }
 
@@ -164,7 +166,7 @@ func (ps *ProfileService) CreateInvitedProfile(email string) (*models.Profile, e
 
 	// Send registration email
 	registrationURL := fmt.Sprintf("%s/register?email=%s", configs.Configs.Service.BaseURL, email)
-	err = utils.EmailSvc.SendRegistrationInvitationEmail(
+	err = ps.emailService.SendRegistrationInvitationEmail(
 		configs.Configs.Email.SenderEmail,
 		email,
 		profile.Name,

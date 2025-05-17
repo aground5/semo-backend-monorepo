@@ -14,13 +14,15 @@ import (
 type TeamService struct {
 	db             *gorm.DB
 	profileService *ProfileService
+	emailService   *utils.EmailService
 }
 
 // NewTeamService creates a new instance of TeamService
-func NewTeamService(db *gorm.DB, profileSvc *ProfileService) *TeamService {
+func NewTeamService(db *gorm.DB, profileSvc *ProfileService, emailService *utils.EmailService) *TeamService {
 	return &TeamService{
 		db:             db,
 		profileService: profileSvc,
+		emailService:   emailService,
 	}
 }
 
@@ -242,7 +244,7 @@ func (s *TeamService) InviteUserToTeam(teamID, userID, inviterID, role string) e
 	// Send an email invitation
 	inviteURL := fmt.Sprintf("%s/teams/%s/invitations/%s", configs.Configs.Service.BaseURL, teamID, membershipID)
 
-	err = utils.EmailSvc.SendTeamInvitationEmail(
+	err = s.emailService.SendTeamInvitationEmail(
 		configs.Configs.Email.SenderEmail,
 		userProfile.Email,
 		userProfile.Name,
