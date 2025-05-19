@@ -25,7 +25,6 @@ type ItemSearchResult struct {
 
 // SearchService 검색 관련 기능을 제공하는 서비스
 type SearchService struct {
-	db                    *gorm.DB
 	cursorManager         *utils.CursorManager
 	taskPermissionService *TaskPermissionService
 	projectMemberService  *ProjectMemberService
@@ -33,9 +32,8 @@ type SearchService struct {
 }
 
 // NewSearchService 새로운 SearchService 인스턴스를 생성합니다.
-func NewSearchService(db *gorm.DB, cursorManager *utils.CursorManager, taskPermissionService *TaskPermissionService, projectMemberService *ProjectMemberService, taskService *TaskService) *SearchService {
+func NewSearchService(cursorManager *utils.CursorManager, taskPermissionService *TaskPermissionService, projectMemberService *ProjectMemberService, taskService *TaskService) *SearchService {
 	return &SearchService{
-		db:                    db,
 		cursorManager:         cursorManager,
 		taskPermissionService: taskPermissionService,
 		projectMemberService:  projectMemberService,

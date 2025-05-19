@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 // TaskPermissionService provides business logic for task permissions.
@@ -16,33 +15,28 @@ type TaskPermissionService struct {
 	entryService         *EntryService
 	shareService         *ShareService
 	projectMemberService *ProjectMemberService
-	db                   *gorm.DB
 }
 
 // NewTaskPermissionService creates a new TaskPermissionService instance.
-func NewTaskPermissionService(taskService *TaskService, entryService *EntryService, shareService *ShareService, projectMemberService *ProjectMemberService, db *gorm.DB) *TaskPermissionService {
-	if db == nil {
-		db = repositories.DBS.Postgres
-	}
+func NewTaskPermissionService(taskService *TaskService, entryService *EntryService, shareService *ShareService, projectMemberService *ProjectMemberService) *TaskPermissionService {
 	return &TaskPermissionService{
 		taskService:          taskService,
 		entryService:         entryService,
 		shareService:         shareService,
 		projectMemberService: projectMemberService,
-		db:                   db,
 	}
 }
 
 // ListPermissions 특정 태스크에 권한이 있는 사용자 목록 조회
 func (tps *TaskPermissionService) ListPermissions(taskID string) ([]models.Profile, error) {
 	var task models.Item
-	if err := tps.db.First(&task, "id = ? AND type = ?", taskID, "task").Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&task, "id = ? AND type = ?", taskID, "task").Error; err != nil {
 		return nil, fmt.Errorf("태스크를 찾을 수 없음: %w", err)
 	}
 
 	var entries []models.Entry
 	rootTaskID := tps.taskService.FindRootTaskID(taskID)
-	if err := tps.db.Where("task_id = ? OR root_task_id = ?", taskID, rootTaskID).Find(&entries).Error; err != nil {
+	if err := repositories.DBS.Postgres.Where("task_id = ? OR root_task_id = ?", taskID, rootTaskID).Find(&entries).Error; err != nil {
 		return nil, fmt.Errorf("엔트리 조회 실패: %w", err)
 	}
 
@@ -63,7 +57,7 @@ func (tps *TaskPermissionService) ListPermissions(taskID string) ([]models.Profi
 	}
 
 	var profiles []models.Profile
-	if err := tps.db.Where("id IN ?", profileIDs).Find(&profiles).Error; err != nil {
+	if err := repositories.DBS.Postgres.Where("id IN ?", profileIDs).Find(&profiles).Error; err != nil {
 		return nil, fmt.Errorf("프로필 조회 실패: %w", err)
 	}
 
@@ -74,13 +68,13 @@ func (tps *TaskPermissionService) ListPermissions(taskID string) ([]models.Profi
 func (tps *TaskPermissionService) GrantPermission(taskID, profileID string) error {
 	// 태스크 존재 확인
 	var task models.Item
-	if err := tps.db.First(&task, "id = ? AND type = ?", taskID, "task").Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&task, "id = ? AND type = ?", taskID, "task").Error; err != nil {
 		return fmt.Errorf("태스크를 찾을 수 없음: %w", err)
 	}
 
 	// 프로필 존재 확인
 	var profile models.Profile
-	if err := tps.db.First(&profile, "id = ?", profileID).Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&profile, "id = ?", profileID).Error; err != nil {
 		return fmt.Errorf("프로필을 찾을 수 없음: %w", err)
 	}
 
@@ -115,7 +109,7 @@ func (tps *TaskPermissionService) GrantPermission(taskID, profileID string) erro
 // RevokePermission 특정 태스크에 대한 권한 회수
 func (tps *TaskPermissionService) RevokePermission(taskID, profileID string) error {
 	rootTaskID := tps.taskService.FindRootTaskID(taskID)
-	result := tps.db.Where("(task_id = ? OR root_task_id = ?) AND granted_to = ?", taskID, rootTaskID, profileID).
+	result := repositories.DBS.Postgres.Where("(task_id = ? OR root_task_id = ?) AND granted_to = ?", taskID, rootTaskID, profileID).
 		Delete(&models.Entry{})
 
 	if result.Error != nil {
@@ -141,7 +135,7 @@ func (tps *TaskPermissionService) CheckPermission(taskID, profileID string) (boo
 		return hasPermission, nil
 	}
 	fmt.Println("rootTaskID", rootTaskID)
-	if err := tps.db.Model(&models.Entry{}).
+	if err := repositories.DBS.Postgres.Model(&models.Entry{}).
 		Where("(task_id = ? OR root_task_id = ?) AND granted_to = ?", taskID, rootTaskID, profileID).
 		Count(&count).Error; err != nil {
 		return false, fmt.Errorf("권한 확인 실패: %w", err)
@@ -154,13 +148,13 @@ func (tps *TaskPermissionService) CheckPermission(taskID, profileID string) (boo
 func (tps *TaskPermissionService) GrantPermissionWithUUID(taskID, profileID string) (string, error) {
 	// 테스크 존재 확인
 	var task models.Item
-	if err := tps.db.First(&task, "id = ? AND type = ?", taskID, "task").Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&task, "id = ? AND type = ?", taskID, "task").Error; err != nil {
 		return "", fmt.Errorf("테스크를 찾을 수 없음: %w", err)
 	}
 
 	// 프로필 존재 확인
 	var profile models.Profile
-	if err := tps.db.First(&profile, "id = ?", profileID).Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&profile, "id = ?", profileID).Error; err != nil {
 		return "", fmt.Errorf("프로필을 찾을 수 없음: %w", err)
 	}
 
@@ -226,7 +220,7 @@ func (tps *TaskPermissionService) getAllTasksByBFS(rootID string) ([]TaskWithDep
 
 			// Get all direct children of current task
 			var children []models.Item
-			if err := tps.db.Where(&models.Item{
+			if err := repositories.DBS.Postgres.Where(&models.Item{
 				ParentID: &currentID,
 				Type:     "task",
 			}).Order("position ASC").Find(&children).Error; err != nil {
@@ -254,13 +248,13 @@ func (tps *TaskPermissionService) getAllTasksByBFS(rootID string) ([]TaskWithDep
 func (tps *TaskPermissionService) GetTaskAndChildrenByShareUUID(uuid string) (*models.Item, []TaskWithDepth, error) {
 	// Get share by UUID
 	var share models.Share
-	if err := tps.db.Where("id::text = ?", uuid).First(&share).Error; err != nil {
+	if err := repositories.DBS.Postgres.Where("id::text = ?", uuid).First(&share).Error; err != nil {
 		return nil, nil, fmt.Errorf("share not found: %w", err)
 	}
 
 	// Get task by task_id
 	var task models.Item
-	if err := tps.db.First(&task, "id = ? AND type = ?", share.RootTaskID, "task").Error; err != nil {
+	if err := repositories.DBS.Postgres.First(&task, "id = ? AND type = ?", share.RootTaskID, "task").Error; err != nil {
 		return nil, nil, fmt.Errorf("task not found: %w", err)
 	}
 
