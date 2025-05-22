@@ -3,7 +3,6 @@ package logics
 import (
 	"errors"
 	"fmt"
-	"semo-server/configs"
 	"semo-server/internal/models"
 	"semo-server/internal/repositories"
 
@@ -12,16 +11,20 @@ import (
 )
 
 // UserTestService provides operations for managing user tests
-type UserTestService struct {}
+type UserTestService struct {
+	logger *zap.Logger
+}
 
 // NewUserTestService creates a new instance of UserTestService
-func NewUserTestService() *UserTestService {
-	return &UserTestService{}
+func NewUserTestService(logger *zap.Logger) *UserTestService {
+	return &UserTestService{
+		logger: logger,
+	}
 }
 
 // CreateUserTest creates a new UserTests record with the given taskID and question
 // fulfills requirement #1: taskID에 맞는 question을 담은 UserTests 생성하기
-func (s *UserTestService) CreateUserTest(taskID string, question string, userID string) (*models.UserTests, error) {
+func (s *UserTestService) CreateUserTest(taskID string, question string, userID string, logger *zap.Logger) (*models.UserTests, error) {
 	if taskID == "" {
 		return nil, errors.New("taskID is required")
 	}
@@ -42,13 +45,13 @@ func (s *UserTestService) CreateUserTest(taskID string, question string, userID 
 
 	result := repositories.DBS.Postgres.Create(userTest)
 	if result.Error != nil {
-		configs.Logger.Error("Failed to create user test",
+		s.logger.Error("Failed to create user test",
 			zap.String("taskID", taskID),
 			zap.Error(result.Error))
 		return nil, fmt.Errorf("failed to create user test: %w", result.Error)
 	}
 
-	configs.Logger.Info("Created user test",
+	s.logger.Info("Created user test",
 		zap.String("taskID", taskID),
 		zap.Int("id", userTest.ID))
 	return userTest, nil
@@ -75,12 +78,12 @@ func (s *UserTestService) UpdateLatestAnswer(taskID string, answer string, userI
 
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			configs.Logger.Warn("No UserTests found for taskID and userID",
+			s.logger.Warn("No UserTests found for taskID and userID",
 				zap.String("taskID", taskID),
 				zap.String("userID", userID))
 			return nil, fmt.Errorf("no UserTests found for taskID %s and userID %s", taskID, userID)
 		}
-		configs.Logger.Error("Failed to fetch latest UserTests",
+		s.logger.Error("Failed to fetch latest UserTests",
 			zap.String("taskID", taskID),
 			zap.String("userID", userID),
 			zap.Error(result.Error))
@@ -91,13 +94,13 @@ func (s *UserTestService) UpdateLatestAnswer(taskID string, answer string, userI
 	userTest.Answer = answer
 	updateResult := repositories.DBS.Postgres.Save(&userTest)
 	if updateResult.Error != nil {
-		configs.Logger.Error("Failed to update answer",
+		s.logger.Error("Failed to update answer",
 			zap.Int("id", userTest.ID),
 			zap.Error(updateResult.Error))
 		return nil, fmt.Errorf("failed to update answer: %w", updateResult.Error)
 	}
 
-	configs.Logger.Info("Updated answer for user test",
+	s.logger.Info("Updated answer for user test",
 		zap.Int("id", userTest.ID),
 		zap.String("taskID", taskID))
 	return &userTest, nil
@@ -118,12 +121,12 @@ func (s *UserTestService) UpdateUserData(id int, userData string, userID string)
 	result := repositories.DBS.Postgres.Where("id = ? AND user_id = ?", id, userID).First(&userTest)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			configs.Logger.Warn("UserTests not found for this user",
+			s.logger.Warn("UserTests not found for this user",
 				zap.Int("id", id),
 				zap.String("userID", userID))
 			return nil, fmt.Errorf("UserTests with ID %d not found for this user", id)
 		}
-		configs.Logger.Error("Failed to fetch UserTests",
+		s.logger.Error("Failed to fetch UserTests",
 			zap.Int("id", id),
 			zap.Error(result.Error))
 		return nil, fmt.Errorf("failed to fetch UserTests: %w", result.Error)
@@ -133,12 +136,12 @@ func (s *UserTestService) UpdateUserData(id int, userData string, userID string)
 	userTest.UserData = userData
 	updateResult := repositories.DBS.Postgres.Save(&userTest)
 	if updateResult.Error != nil {
-		configs.Logger.Error("Failed to update UserData",
+		s.logger.Error("Failed to update UserData",
 			zap.Int("id", id),
 			zap.Error(updateResult.Error))
 		return nil, fmt.Errorf("failed to update UserData: %w", updateResult.Error)
 	}
 
-	configs.Logger.Info("Updated UserData for user test", zap.Int("id", id))
+	s.logger.Info("Updated UserData for user test", zap.Int("id", id))
 	return &userTest, nil
 }

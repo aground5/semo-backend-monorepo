@@ -3,7 +3,6 @@ package controllers
 import (
 	"fmt"
 	"net/http"
-	"semo-server/configs"
 	"semo-server/internal/logics"
 
 	"github.com/google/uuid"
@@ -15,13 +14,15 @@ import (
 type KickoffController struct {
 	BaseController
 	LlmService     *logics.LLMService
+	logger         *zap.Logger
 }
 
 // NewKickoffController creates a new instance of KickoffController
-func NewKickoffController(llmService *logics.LLMService, profileService *logics.ProfileService) *KickoffController {
+func NewKickoffController(llmService *logics.LLMService, profileService *logics.ProfileService, logger *zap.Logger) *KickoffController {
 	return &KickoffController{
 		BaseController: NewBaseController(profileService),
 		LlmService:     llmService,
+		logger:         logger,
 	}
 }
 
@@ -106,7 +107,7 @@ func (kc *KickoffController) GeneratePreview(ctx echo.Context) error {
 	return handleSSE(ctx, func(streamChan chan string) {
 		// Call the subtask generation function with empty parentID and preQuestion
 		if err := kc.LlmService.GenerateSubtasks(&req, profile.ID, &sessionUUID, streamChan); err != nil {
-			configs.Logger.Error("GenerateSubtasks failed", zap.Error(err))
+			kc.logger.Error("GenerateSubtasks failed", zap.Error(err))
 		}
 	})
 }
@@ -142,7 +143,7 @@ func (kc *KickoffController) GeneratePreQuestions(ctx echo.Context) error {
 		// Call the pre-question generation function
 		if err := kc.LlmService.GeneratePreQuestions(req.TaskID, profile.ID, &sessionUUID, streamChan); err != nil {
 			// Handle error (log it)
-			configs.Logger.Error("GeneratePreQuestions failed", zap.Error(err))
+			kc.logger.Error("GeneratePreQuestions failed", zap.Error(err))
 		}
 	})
 }
@@ -171,7 +172,7 @@ func (kc *KickoffController) GenerateDetails(ctx echo.Context) error {
 	return handleSSE(ctx, func(streamChan chan string) {
 		// Call the details generation function
 		if err := kc.LlmService.GenerateDetails(req.TaskID, profile.ID, &sessionUUID, streamChan); err != nil {
-			configs.Logger.Error("GenerateDetails failed", zap.Error(err))
+			kc.logger.Error("GenerateDetails failed", zap.Error(err))
 		}
 	})
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"semo-server/configs"
 	"semo-server/internal/ai/collectors"
 	"semo-server/internal/ai/executor"
 	"semo-server/internal/ai/formatters"
@@ -30,6 +29,7 @@ type GenerateSubtaskRequest struct {
 type LLMService struct {
 	taskService     *TaskService
 	userTestService *UserTestService
+	logger          *zap.Logger
 
 	// AI services
 	subtaskService    *services.SubtaskService
@@ -42,21 +42,21 @@ type LLMService struct {
 	contextCollector  *collectors.ContextCollector
 }
 
-func NewLLMService(db *gorm.DB, taskService *TaskService, userTestService *UserTestService) *LLMService {
+func NewLLMService(db *gorm.DB, taskService *TaskService, userTestService *UserTestService, logger *zap.Logger) *LLMService {
 	// Create executor
 	aiExecutor := executor.NewAIExecutor()
 
 	// Create services
-	roleService := services.NewRoleService(aiExecutor, configs.Logger)
+	roleService := services.NewRoleService(aiExecutor, logger)
 
 	return &LLMService{
 		taskService:     taskService,
 		userTestService: userTestService,
 
-		subtaskService:    services.NewSubtaskService(aiExecutor, configs.Logger, roleService),
-		dependencyService: services.NewDependencyService(aiExecutor, configs.Logger),
-		questionService:   services.NewQuestionService(aiExecutor, configs.Logger, roleService),
-		detailService:     services.NewDetailService(aiExecutor, configs.Logger),
+		subtaskService:    services.NewSubtaskService(aiExecutor, logger, roleService),
+		dependencyService: services.NewDependencyService(aiExecutor, logger),
+		questionService:   services.NewQuestionService(aiExecutor, logger, roleService),
+		detailService:     services.NewDetailService(aiExecutor, logger),
 
 		taskCollector:     collectors.NewTaskCollector(),
 		userDataCollector: collectors.NewUserDataCollector(),
@@ -124,7 +124,7 @@ func (cs *LLMService) GenerateSubtasks(req *GenerateSubtaskRequest, userID strin
 
 	if req.TaskID != "" {
 		if err := repositories.DBS.Postgres.Where("parent_id = ? AND type = ?", req.TaskID, "task").Delete(&models.Item{}).Error; err != nil {
-			configs.Logger.Error("Failed to delete existing subtasks", zap.String("parentID", req.TaskID), zap.Error(err))
+			cs.logger.Error("Failed to delete existing subtasks", zap.String("parentID", req.TaskID), zap.Error(err))
 			return fmt.Errorf("failed to delete existing subtasks: %w", err)
 		}
 
@@ -265,7 +265,7 @@ func (cs *LLMService) GeneratePreQuestions(taskID, userID string, session *uuid.
 	}
 
 	// Create user test
-	userTest, err := cs.userTestService.CreateUserTest(taskID, questions, userID)
+	userTest, err := cs.userTestService.CreateUserTest(taskID, questions, userID, cs.logger)
 	if err != nil {
 		return err
 	}
@@ -295,14 +295,14 @@ func (cs *LLMService) understandQuestion(taskID, answer, userID string, session 
 	// Analyze the question
 	analysisOutput, err := cs.questionService.UnderstandQuestion(ctx, data)
 	if err != nil {
-		configs.Logger.Error("Failed to understand question",
+		cs.logger.Error("Failed to understand question",
 			zap.String("question", userTest.Question),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to understand question: %w", err)
 	}
 
 	// Log success
-	configs.Logger.Info("Successfully analyzed question",
+	cs.logger.Info("Successfully analyzed question",
 		zap.String("question", userTest.Question),
 		zap.String("response", analysisOutput))
 
@@ -391,7 +391,7 @@ func (cs *LLMService) GenerateCompleteMindmap(req *GenerateMindmapRequest, userI
 // generateSubtasksAndReturnIDs generates subtasks for a task and returns their IDs
 func (cs *LLMService) generateSubtasksAndReturnIDs(ctx context.Context, taskID, userID string, streamChan chan<- string) ([]string, error) {
 	if err := repositories.DBS.Postgres.Where("parent_id = ? AND type = ?", taskID, "task").Delete(&models.Item{}).Error; err != nil {
-		configs.Logger.Error("Failed to delete existing subtasks", zap.String("parentID", taskID), zap.Error(err))
+		cs.logger.Error("Failed to delete existing subtasks", zap.String("parentID", taskID), zap.Error(err))
 		return nil, fmt.Errorf("failed to delete existing subtasks: %w", err)
 	}
 

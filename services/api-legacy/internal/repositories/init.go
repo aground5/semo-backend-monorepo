@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gLogger "gorm.io/gorm/logger"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -37,16 +37,16 @@ type dbs struct {
 // Singleton 패턴으로 한번만 초기화
 var DBS dbs
 
-func Init() {
-	initRedis()
-	initPostgres()
-	initS3()
-	initSpiceDB()
+func Init(logger *zap.Logger) {
+	initRedis(logger)
+	initPostgres(logger)
+	initS3(logger)
+	initSpiceDB(logger)
 	//initMongoDB()
 }
 
 // initRedis initializes the Redis connection
-func initRedis() {
+func initRedis(logger *zap.Logger) {
 	opt := &redis.Options{
 		Addr:     configs.Configs.Redis.Addresses[0],
 		Username: configs.Configs.Redis.Username,
@@ -70,18 +70,18 @@ func initRedis() {
 
 	result, err := DBS.Redis.Ping(ctx).Result()
 	if err != nil {
-		configs.Logger.Fatal("Failed to connect to Redis", zap.Error(err))
+		logger.Fatal("Failed to connect to Redis", zap.Error(err))
 		return
 	}
 
-	configs.Logger.Info("Redis connected successfully", zap.String("result", result))
+	logger.Info("Redis connected successfully", zap.String("result", result))
 }
 
 // initPostgres initializes the PostgreSQL connection
-func initPostgres() {
+func initPostgres(logger *zap.Logger) {
 	host, port, err := net.SplitHostPort(configs.Configs.Postgres.Address)
 	if err != nil {
-		configs.Logger.Fatal("Invalid Postgres address", zap.Error(err))
+		logger.Fatal("Invalid Postgres address", zap.Error(err))
 		return
 	}
 
@@ -96,7 +96,7 @@ func initPostgres() {
 
 	// Create custom GORM logger
 	gormLogger := loggers.NewZapGormLogger(
-		logger.Info,                    // LogLevel
+		gLogger.Info,                    // LogLevel
 		200*time.Millisecond,           // SlowThreshold
 		true,                           // IgnoreRecordNotFoundError
 	)
@@ -105,7 +105,7 @@ func initPostgres() {
 		Logger: gormLogger,
 	})
 	if err != nil {
-		configs.Logger.Fatal("Failed to connect to PostgreSQL", zap.Error(err))
+		logger.Fatal("Failed to connect to PostgreSQL", zap.Error(err))
 		return
 	}
 
@@ -116,7 +116,7 @@ func initPostgres() {
 	}
 
 	DBS.Postgres = db
-	configs.Logger.Info("PostgreSQL connected successfully")
+	logger.Info("PostgreSQL connected successfully")
 }
 
 func autoMigrateInOrder(db *gorm.DB) error {
@@ -146,7 +146,7 @@ func autoMigrateInOrder(db *gorm.DB) error {
 	return nil
 }
 
-func initS3() {
+func initS3(logger *zap.Logger) {
 	cfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithRegion(configs.Configs.S3.Region),
 		config.WithCredentialsProvider(
@@ -158,23 +158,23 @@ func initS3() {
 		),
 	)
 	if err != nil {
-		configs.Logger.Fatal("AWS S3 설정 로드 실패", zap.Error(err))
+		logger.Fatal("AWS S3 설정 로드 실패", zap.Error(err))
 		return
 	}
 
 	// S3 클라이언트 생성
 	DBS.S3 = s3.NewFromConfig(cfg)
-	configs.Logger.Info("S3 클라이언트가 성공적으로 초기화되었습니다")
+	logger.Info("S3 클라이언트가 성공적으로 초기화되었습니다")
 }
 
-func initSpiceDB() {
+func initSpiceDB(logger *zap.Logger) {
 	client, err := authzed.NewClient(
 		configs.Configs.SpiceDB.Address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(tokenAuth{token: configs.Configs.SpiceDB.Token}),
 	)
 	if err != nil {
-		configs.Logger.Fatal("failed to create authzed client", zap.Error(err))
+		logger.Fatal("failed to create authzed client", zap.Error(err))
 		return
 	}
 

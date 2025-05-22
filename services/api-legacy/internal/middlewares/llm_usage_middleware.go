@@ -24,6 +24,8 @@ const (
 	llmLogsCollection = "llm_usage_logs"
 )
 
+// TODO: logger 주입이 이루어져야 함, 현재 연결된 부분이 없어서 주입이 안되고 있음
+
 // LLMUsageMiddleware checks and limits LLM API usage per user
 func LLMUsageMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {

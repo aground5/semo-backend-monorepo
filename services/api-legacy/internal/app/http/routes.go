@@ -11,10 +11,11 @@ import (
 	"semo-server/internal/utils"
 
 	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 )
 
 // RegisterRoutes는 서버의 모든 라우트를 등록합니다.
-func RegisterRoutes(e *echo.Echo) {
+func RegisterRoutes(e *echo.Echo, logger *zap.Logger) {
 	// 기본 헬스 체크 엔드포인트 (JWT 미들웨어 없음)
 	e.GET("/", func(c echo.Context) error {
 		return c.String(http.StatusOK, "Hello, from Semo Server!")
@@ -31,7 +32,7 @@ func RegisterRoutes(e *echo.Echo) {
 	// 다른 서비스들 초기화
 	attributeService := logics.NewAttributeService()
 	attributeValueService := logics.NewAttributeValueService()
-	userTestService := logics.NewUserTestService()
+	userTestService := logics.NewUserTestService(logger)
 	fileService := logics.NewFileService(repositories.DBS.S3, configs.Configs.S3.BucketName) // S3 클라이언트 추가 필요
 	entryService := logics.NewEntryService(cursorManager)
 	shareService := logics.NewShareService(cursorManager)
@@ -42,13 +43,13 @@ func RegisterRoutes(e *echo.Echo) {
 	projectMemberService := logics.NewProjectMemberService(profileService, teamService)
 	taskPermissionService := logics.NewTaskPermissionService(taskService, entryService, shareService, projectMemberService)
 	searchService := logics.NewSearchService(cursorManager, taskPermissionService, projectMemberService, taskService)
-	llmService := logics.NewLLMService(repositories.DBS.Postgres, taskService, userTestService)
+	llmService := logics.NewLLMService(repositories.DBS.Postgres, taskService, userTestService, logger)
 
 	// 컨트롤러 초기화 - 필요한 서비스 주입
 	attributeController := controllers.NewAttributeController(attributeService, attributeValueService, profileService, taskPermissionService)
 	entryController := controllers.NewEntryController(profileService, entryService)
 	fileController := controllers.NewFileController(fileService, profileService, taskPermissionService)
-	kickoffController := controllers.NewKickoffController(llmService, profileService)
+	kickoffController := controllers.NewKickoffController(llmService, profileService, logger)
 	profileController := controllers.NewProfileController(profileService, searchService)
 	projectController := controllers.NewProjectController(projectService, projectMemberService, profileService)
 	taskController := controllers.NewTaskController(taskService, profileService, taskPermissionService, projectMemberService)

@@ -5,12 +5,12 @@ import (
 	"errors"
 	"time"
 
+	"semo-server/internal/repositories"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
-	"semo-server/configs"
-	"semo-server/internal/repositories"
 )
 
 // Question represents the structure of a question document in MongoDB
@@ -25,10 +25,11 @@ type Question struct {
 // MapQuestionService handles operations related to questions in MongoDB
 type MapQuestionService struct {
 	collection *mongo.Collection
+	logger     *zap.Logger
 }
 
 // NewMapQuestionService creates a new instance of MapQuestionService
-func NewMapQuestionService() *MapQuestionService {
+func NewMapQuestionService(logger *zap.Logger) *MapQuestionService {
 	// Get the MongoDB client from repositories
 	client := repositories.DBS.MongoDB
 
@@ -38,6 +39,7 @@ func NewMapQuestionService() *MapQuestionService {
 
 	return &MapQuestionService{
 		collection: collection,
+		logger:     logger,
 	}
 }
 
@@ -57,7 +59,7 @@ func (s *MapQuestionService) CreateQuestion(question string) (string, error) {
 	// Insert the document into MongoDB
 	result, err := s.collection.InsertOne(ctx, newQuestion)
 	if err != nil {
-		configs.Logger.Error("Failed to insert question",
+		s.logger.Error("Failed to insert question",
 			zap.String("question", question),
 			zap.Error(err))
 		return "", err
@@ -66,11 +68,11 @@ func (s *MapQuestionService) CreateQuestion(question string) (string, error) {
 	// Extract the ID from the result
 	id, ok := result.InsertedID.(primitive.ObjectID)
 	if !ok {
-		configs.Logger.Error("Failed to convert InsertedID to ObjectID")
+		s.logger.Error("Failed to convert InsertedID to ObjectID")
 		return "", errors.New("failed to convert InsertedID to ObjectID")
 	}
 
-	configs.Logger.Info("Question created successfully",
+	s.logger.Info("Question created successfully",
 		zap.String("id", id.Hex()),
 		zap.String("question", question))
 
@@ -85,7 +87,7 @@ func (s *MapQuestionService) GetQuestionByID(id string) (*Question, error) {
 	// Convert string ID to ObjectID
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
-		configs.Logger.Error("Invalid ObjectID format",
+		s.logger.Error("Invalid ObjectID format",
 			zap.String("id", id),
 			zap.Error(err))
 		return nil, err
@@ -99,11 +101,11 @@ func (s *MapQuestionService) GetQuestionByID(id string) (*Question, error) {
 	err = s.collection.FindOne(ctx, filter).Decode(&question)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			configs.Logger.Warn("Question not found", zap.String("id", id))
+			s.logger.Warn("Question not found", zap.String("id", id))
 			return nil, errors.New("question not found")
 		}
 
-		configs.Logger.Error("Failed to find question",
+		s.logger.Error("Failed to find question",
 			zap.String("id", id),
 			zap.Error(err))
 		return nil, err
@@ -120,7 +122,7 @@ func (s *MapQuestionService) UpdateQuestionWithAnswer(id string, answer string) 
 	// Convert string ID to ObjectID
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
-		configs.Logger.Error("Invalid ObjectID format",
+		s.logger.Error("Invalid ObjectID format",
 			zap.String("id", id),
 			zap.Error(err))
 		return err
@@ -140,18 +142,18 @@ func (s *MapQuestionService) UpdateQuestionWithAnswer(id string, answer string) 
 	// Update the document
 	result, err := s.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
-		configs.Logger.Error("Failed to update question with answer",
+		s.logger.Error("Failed to update question with answer",
 			zap.String("id", id),
 			zap.Error(err))
 		return err
 	}
 
 	if result.MatchedCount == 0 {
-		configs.Logger.Warn("Question not found for update", zap.String("id", id))
+		s.logger.Warn("Question not found for update", zap.String("id", id))
 		return errors.New("question not found")
 	}
 
-	configs.Logger.Info("Question updated with answer successfully",
+	s.logger.Info("Question updated with answer successfully",
 		zap.String("id", id),
 		zap.Int64("modifiedCount", result.ModifiedCount))
 
