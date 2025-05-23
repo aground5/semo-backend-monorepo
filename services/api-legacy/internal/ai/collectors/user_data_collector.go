@@ -3,7 +3,7 @@ package collectors
 import (
 	"errors"
 	"fmt"
-	"semo-server/configs"
+	"semo-server/configs-legacy"
 
 	"go.uber.org/zap"
 

@@ -3,7 +3,7 @@ package logics
 import (
 	"errors"
 	"fmt"
-	"semo-server/configs"
+	"semo-server/configs-legacy"
 	"semo-server/internal/models"
 	"semo-server/internal/repositories"
 	"semo-server/internal/utils"

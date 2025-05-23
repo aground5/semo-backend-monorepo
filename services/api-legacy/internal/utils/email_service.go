@@ -2,7 +2,7 @@ package utils
 
 import (
 	"fmt"
-	"semo-server/configs"
+	"semo-server/configs-legacy"
 
 	"gopkg.in/gomail.v2"
 )

@@ -12,8 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"semo-server/configs-legacy"
+
 	"go.uber.org/zap"
-	"semo-server/configs"
 )
 
 // channelWriter implements io.Writer interface for writing directly to a channel

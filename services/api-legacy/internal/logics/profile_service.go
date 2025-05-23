@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"semo-server/configs"
+	"semo-server/configs-legacy"
 	"semo-server/internal/logics/config_engine"
 	"semo-server/internal/models"
 	"semo-server/internal/repositories"

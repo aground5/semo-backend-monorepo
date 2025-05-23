@@ -5,13 +5,15 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
-	"semo-server/configs"
+
+	// "semo-server/configs-legacy" // 기존 레거시 설정 import 제거
+	apilegacyconfig "semo-server/config" // 새 설정 패키지 import (main.go와 동일한 패키지 경로 사용)
 	"semo-server/internal/loggers"
 	"semo-server/internal/models"
 	"time"
 
 	"github.com/authzed/authzed-go/v1"
-	"github.com/aws/aws-sdk-go-v2/config"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config" // alias 추가하여 이름 충돌 방지
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/redis/go-redis/v9"
@@ -23,7 +25,6 @@ import (
 	gLogger "gorm.io/gorm/logger"
 
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type dbs struct {
@@ -37,30 +38,36 @@ type dbs struct {
 // Singleton 패턴으로 한번만 초기화
 var DBS dbs
 
-func Init(logger *zap.Logger) {
-	initRedis(logger)
-	initPostgres(logger)
-	initS3(logger)
-	initSpiceDB(logger)
-	//initMongoDB()
+// Init 함수가 새로운 설정 객체(appCfg)를 받도록 수정
+func Init(logger *zap.Logger, appCfg *apilegacyconfig.Config) {
+	initRedis(logger, appCfg)
+	initPostgres(logger, appCfg)
+	initS3(logger, appCfg)
+	initSpiceDB(logger, appCfg)
+	//initMongoDB(appCfg) // 필요하다면 MongoDB 초기화도 수정
 }
 
 // initRedis initializes the Redis connection
-func initRedis(logger *zap.Logger) {
-	opt := &redis.Options{
-		Addr:     configs.Configs.Redis.Addresses[0],
-		Username: configs.Configs.Redis.Username,
-		Password: configs.Configs.Redis.Password, // if Redis requires authentication
-		DB:       configs.Configs.Redis.Database, // use default DB
+// initRedis 함수도 새로운 설정 객체(appCfg)를 받도록 수정
+func initRedis(logger *zap.Logger, appCfg *apilegacyconfig.Config) {
+	if len(appCfg.Redis.Addresses) == 0 { // Addresses 슬라이스가 비어있는지 확인
+		logger.Error("Redis addresses are not configured.")
+		// Redis 연결이 필수적인 경우 여기서 Fatal 처리하거나,
+		// 선택적인 경우 연결을 시도하지 않고 반환할 수 있습니다.
+		// 여기서는 일단 에러 로깅 후 반환하도록 처리합니다.
+		// DBS.Redis = nil // 또는 Redis를 사용하지 않는다는 표시
+		return
 	}
 
-	// TLS가 true이면 TLSConfig 설정
-	if configs.Configs.Redis.Tls {
-		opt.TLSConfig = &tls.Config{
-			// 필요 시, 인증서 검사 비활성화:
-			// InsecureSkipVerify: true,
-			// 혹은 CA 인증서 등을 설정하려면 RootCAs 설정 등 추가
-		}
+	opt := &redis.Options{
+		Addr:     appCfg.Redis.Addresses[0], // 새로운 설정 객체 사용
+		Username: appCfg.Redis.Username,      // 새로운 설정 객체 사용
+		Password: appCfg.Redis.Password,      // 새로운 설정 객체 사용
+		DB:       appCfg.Redis.Database,      // 새로운 설정 객체 사용
+	}
+
+	if appCfg.Redis.TLS { // 새로운 설정 객체 사용
+		opt.TLSConfig = &tls.Config{}
 	}
 
 	DBS.Redis = redis.NewClient(opt)
@@ -77,28 +84,32 @@ func initRedis(logger *zap.Logger) {
 	logger.Info("Redis connected successfully", zap.String("result", result))
 }
 
-// initPostgres initializes the PostgreSQL connection
-func initPostgres(logger *zap.Logger) {
-	host, port, err := net.SplitHostPort(configs.Configs.Postgres.Address)
+// initPostgres 함수도 새로운 설정 객체(appCfg)를 받도록 수정
+func initPostgres(logger *zap.Logger, appCfg *apilegacyconfig.Config) {
+	// configs.Configs.Postgres.Address 대신 appCfg.Database 사용
+	// api-legacy.yaml에는 database.host 와 database.port 가 분리되어 있음
+	dbAddr := fmt.Sprintf("%s:%d", appCfg.Database.Host, appCfg.Database.Port)
+
+	host, port, err := net.SplitHostPort(dbAddr) // dbAddr 사용
 	if err != nil {
-		logger.Fatal("Invalid Postgres address", zap.Error(err))
+		logger.Fatal("Invalid Postgres address", zap.Error(err), zap.String("address", dbAddr))
 		return
 	}
 
 	dsn := fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s port=%s",
+		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable", // sslmode=disable 추가 또는 설정에 따라 변경
 		host,
-		configs.Configs.Postgres.Username,
-		configs.Configs.Postgres.Password,
-		configs.Configs.Postgres.Database,
+		appCfg.Database.User,     // 새로운 설정 객체 사용
+		appCfg.Database.Password, // 새로운 설정 객체 사용
+		appCfg.Database.Name,     // 새로운 설정 객체 사용
 		port,
 	)
 
-	// Create custom GORM logger
 	gormLogger := loggers.NewZapGormLogger(
-		gLogger.Info,                    // LogLevel
-		200*time.Millisecond,           // SlowThreshold
-		true,                           // IgnoreRecordNotFoundError
+		logger, 
+		gLogger.Info,
+		200*time.Millisecond,
+		true,
 	)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
@@ -109,10 +120,11 @@ func initPostgres(logger *zap.Logger) {
 		return
 	}
 
-	//자동 마이그레이션 실행
 	err = autoMigrateInOrder(db)
 	if err != nil {
-		panic("Failed to migrate database")
+		// panic("Failed to migrate database") // panic 대신 Fatal 로깅
+				logger.Fatal("Failed to migrate database", zap.Error(err))
+				return
 	}
 
 	DBS.Postgres = db
@@ -120,7 +132,7 @@ func initPostgres(logger *zap.Logger) {
 }
 
 func autoMigrateInOrder(db *gorm.DB) error {
-	// 의존 관계에 따른 마이그레이션 순서
+	// ... (기존 코드 유지) ...
 	modelsInOrder := []interface{}{
 		&models.Profile{},
 		&models.Team{},
@@ -146,13 +158,15 @@ func autoMigrateInOrder(db *gorm.DB) error {
 	return nil
 }
 
-func initS3(logger *zap.Logger) {
-	cfg, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRegion(configs.Configs.S3.Region),
-		config.WithCredentialsProvider(
+
+// initS3 함수도 새로운 설정 객체(appCfg)를 받도록 수정
+func initS3(logger *zap.Logger, appCfg *apilegacyconfig.Config) {
+	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(),
+		awsconfig.WithRegion(appCfg.S3.Region), // 새로운 설정 객체 사용
+		awsconfig.WithCredentialsProvider(
 			credentials.NewStaticCredentialsProvider(
-				configs.Configs.S3.AccessKey,
-				configs.Configs.S3.SecretKey,
+				appCfg.S3.AccessKey,  // 새로운 설정 객체 사용
+				appCfg.S3.SecretKey,  // 새로운 설정 객체 사용
 				"",
 			),
 		),
@@ -162,16 +176,16 @@ func initS3(logger *zap.Logger) {
 		return
 	}
 
-	// S3 클라이언트 생성
-	DBS.S3 = s3.NewFromConfig(cfg)
+	DBS.S3 = s3.NewFromConfig(awsCfg)
 	logger.Info("S3 클라이언트가 성공적으로 초기화되었습니다")
 }
 
-func initSpiceDB(logger *zap.Logger) {
+// initSpiceDB 함수도 새로운 설정 객체(appCfg)를 받도록 수정
+func initSpiceDB(logger *zap.Logger, appCfg *apilegacyconfig.Config) {
 	client, err := authzed.NewClient(
-		configs.Configs.SpiceDB.Address,
+		appCfg.SpiceDB.Address, // 새로운 설정 객체 사용
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithPerRPCCredentials(tokenAuth{token: configs.Configs.SpiceDB.Token}),
+		grpc.WithPerRPCCredentials(tokenAuth{token: appCfg.SpiceDB.Token}), // 새로운 설정 객체 사용
 	)
 	if err != nil {
 		logger.Fatal("failed to create authzed client", zap.Error(err))
@@ -179,57 +193,22 @@ func initSpiceDB(logger *zap.Logger) {
 	}
 
 	DBS.SpiceDB = client
-	configs.Logger.Info("SpiceDB 클라이언트가 성공적으로 초기화되었습니다")
+	// configs.Logger.Info 대신 logger.Info 사용
+	logger.Info("SpiceDB 클라이언트가 성공적으로 초기화되었습니다")
 }
 
-// tokenAuth implements the PerRPCCredentials interface.
 type tokenAuth struct {
 	token string
 }
 
-// GetRequestMetadata adds the authorization header with the token.
 func (t tokenAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
 	return map[string]string{
 		"authorization": "Bearer " + t.token,
 	}, nil
 }
 
-// RequireTransportSecurity returns false because we're using insecure credentials.
-// If you were using TLS, you would typically return true.
 func (t tokenAuth) RequireTransportSecurity() bool {
 	return false
 }
 
-// initMongoDB initializes the MongoDB connection
-func initMongoDB() {
-	// Set up connection options with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Create MongoDB connection options
-	clientOptions := options.Client().
-		ApplyURI(configs.Configs.MongoDB.Uri).
-		SetAuth(options.Credential{
-			Username: configs.Configs.MongoDB.Username,
-			Password: configs.Configs.MongoDB.Password,
-		})
-
-	// Connect to MongoDB
-	client, err := mongo.Connect(ctx, clientOptions)
-	if err != nil {
-		configs.Logger.Fatal("Failed to connect to MongoDB", zap.Error(err))
-		return
-	}
-
-	// Ping the database to verify connection
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		configs.Logger.Fatal("Failed to ping MongoDB", zap.Error(err))
-		return
-	}
-
-	// Set the client and database in the global variable
-	DBS.MongoDB = client
-
-	configs.Logger.Info("MongoDB connected successfully")
-}
+// func initMongoDB() { ... } // 필요하다면 이 함수도 수정

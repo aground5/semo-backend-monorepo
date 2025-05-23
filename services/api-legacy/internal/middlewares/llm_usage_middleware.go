@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.uber.org/zap"
 
-	"semo-server/configs"
+	"semo-server/configs-legacy"
 	"semo-server/internal/repositories"
 )
 

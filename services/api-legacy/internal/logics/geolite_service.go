@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"semo-server/configs"
+	"semo-server/configs-legacy"
 	pb "semo-server/proto/geolite" // proto 파일의 go_package 옵션에 맞게 경로를 설정합니다.
 )
 

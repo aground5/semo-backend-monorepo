@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"time"
 
-	"go.uber.org/zap"
-	"semo-server/configs"
+	"semo-server/configs-legacy"
 	"semo-server/internal/repositories"
+
+	"go.uber.org/zap"
 )
 
 // RedisCache handles caching of AI responses in Redis

@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"semo-server/configs"
+	"semo-server/configs-legacy"
 )
 
 func main() {

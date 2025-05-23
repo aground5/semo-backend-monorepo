@@ -2,7 +2,7 @@ package httpEngine
 
 import (
 	"net/http"
-	"semo-server/configs"
+	"semo-server/configs-legacy"
 	"semo-server/internal/controllers"
 	"semo-server/internal/logics"
 	"semo-server/internal/logics/config_engine"

@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	"semo-server/configs-legacy"
+	pb "semo-server/proto/publickey"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"semo-server/configs"
-	pb "semo-server/proto/publickey"
 )
 
 // PublicKeyService는 gRPC 클라이언트를 이용해 공개키를 가져오는 기능을 제공합니다.

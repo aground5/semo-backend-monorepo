@@ -2,7 +2,7 @@ package httpEngine
 
 import (
 	"net/http"
-	"semo-server/configs"
+	"semo-server/configs-legacy"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"

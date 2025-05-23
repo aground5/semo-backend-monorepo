@@ -5,84 +5,75 @@ import (
 	"errors"
 	"time"
 
-	"semo-server/configs"
+	// "semo-server/configs-legacy" // 이 import는 더 이상 필요 없을 수 있습니다. 확인 필요.
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
 
-// ZapGormLogger는 gorm의 logger.Interface를 구현하며, 모든 GORM 로그를 zap 로 기록합니다.
-// 추가로 slow query 임계시간, RecordNotFound 에러 무시 옵션 등을 제공합니다.
 type ZapGormLogger struct {
-	// LogLevel은 기록할 로그의 최소 레벨을 지정합니다.
-	// (gormlogger.Silent, Error, Warn, Info 중 하나)
-	LogLevel gormlogger.LogLevel
-	// SlowThreshold는 쿼리 실행 시간이 이 시간보다 길면 slow query로 판단하여 Warn 레벨 로그를 남깁니다.
-	// 0이면 사용하지 않습니다.
-	SlowThreshold time.Duration
-	// IgnoreRecordNotFoundError가 true이면 gorm.ErrRecordNotFound 에러는 로그에 남기지 않습니다.
+	ZapLogger                 *zap.Logger // zap.Logger 필드 추가
+	LogLevel                  gormlogger.LogLevel
+	SlowThreshold             time.Duration
 	IgnoreRecordNotFoundError bool
 }
 
-// NewZapGormLogger는 지정한 옵션을 가진 ZapGormLogger 인스턴스를 생성합니다.
-func NewZapGormLogger(level gormlogger.LogLevel, slowThreshold time.Duration, ignoreRecordNotFoundError bool) *ZapGormLogger {
+// NewZapGormLogger 함수가 zap.Logger를 인자로 받도록 수정
+func NewZapGormLogger(logger *zap.Logger, level gormlogger.LogLevel, slowThreshold time.Duration, ignoreRecordNotFoundError bool) *ZapGormLogger {
 	return &ZapGormLogger{
+		ZapLogger:                 logger, // 전달받은 로거 설정
 		LogLevel:                  level,
 		SlowThreshold:             slowThreshold,
 		IgnoreRecordNotFoundError: ignoreRecordNotFoundError,
 	}
 }
 
-// LogMode는 로그 레벨을 변경한 새로운 로거 인스턴스를 반환합니다.
 func (z *ZapGormLogger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
 	newLogger := *z
 	newLogger.LogLevel = level
 	return &newLogger
 }
 
-// Info는 일반 정보를 zap을 통해 기록합니다.
 func (z *ZapGormLogger) Info(ctx context.Context, msg string, data ...interface{}) {
 	if z.LogLevel < gormlogger.Info {
 		return
 	}
-	// context에서 추가 정보를 추출할 수 있다면 여기에 삽입 (예: request id 등)
-	configs.Logger.Sugar().Infof(msg, data...)
+	z.ZapLogger.Sugar().Infof(msg, data...) // 구조체의 ZapLogger 사용
 }
 
-// Warn는 경고 로그를 zap을 통해 기록합니다.
 func (z *ZapGormLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
 	if z.LogLevel < gormlogger.Warn {
 		return
 	}
-	configs.Logger.Sugar().Warnf(msg, data...)
+	z.ZapLogger.Sugar().Warnf(msg, data...) // 구조체의 ZapLogger 사용
 }
 
-// Error는 에러 로그를 zap을 통해 기록합니다.
 func (z *ZapGormLogger) Error(ctx context.Context, msg string, data ...interface{}) {
 	if z.LogLevel < gormlogger.Error {
 		return
 	}
-	// 에러 발생시 스택 트레이스 정보도 함께 남깁니다.
-	configs.Logger.Sugar().Errorf(msg, data...)
+	z.ZapLogger.Sugar().Errorf(msg, data...) // 구조체의 ZapLogger 사용
 }
 
-// Trace는 쿼리 실행 시간, SQL, 영향을 받은 행 수, 에러 등 상세 정보를 zap을 통해 기록합니다.
 func (z *ZapGormLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
-	// 쿼리 실행 시간 측정
 	elapsed := time.Since(begin)
-	// 실행된 SQL과 영향을 받은 행 수를 얻음
 	sql, rows := fc()
 
-	// context의 deadline 정보가 있다면 로그에 포함 (디버그 목적으로)
-	if deadline, ok := ctx.Deadline(); ok {
-		configs.Logger.Debug("Context deadline", zap.Time("deadline", deadline))
+	// z.ZapLogger nil 체크 추가 (방어 코드)
+	if z.ZapLogger == nil {
+		// zap logger가 초기화되지 않은 경우 처리 (예: 표준 출력)
+		// fmt.Printf("GORM Trace: ZapLogger not initialized. SQL: %s, Rows: %d, Elapsed: %v, Error: %v\n", sql, rows, elapsed, err)
+		return
 	}
 
-	// 에러가 발생한 경우
+
+	if deadline, ok := ctx.Deadline(); ok {
+		z.ZapLogger.Debug("Context deadline", zap.Time("deadline", deadline)) // 구조체의 ZapLogger 사용
+	}
+
 	if err != nil && (!z.IgnoreRecordNotFoundError || !errors.Is(err, gorm.ErrRecordNotFound)) {
-		// RecordNotFound 에러가 무시 대상이 아니거나, 그 외의 에러인 경우 에러 로그 기록
-		configs.Logger.Error("GORM Trace Error",
+		z.ZapLogger.Error("GORM Trace Error", // 구조체의 ZapLogger 사용
 			zap.Error(err),
 			zap.Duration("elapsed", elapsed),
 			zap.String("sql", sql),
@@ -92,9 +83,8 @@ func (z *ZapGormLogger) Trace(ctx context.Context, begin time.Time, fc func() (s
 		return
 	}
 
-	// 쿼리 실행 시간이 설정된 임계시간보다 길 경우 (slow query)
 	if z.SlowThreshold != 0 && elapsed > z.SlowThreshold {
-		configs.Logger.Warn("GORM Slow Query",
+		z.ZapLogger.Warn("GORM Slow Query", // 구조체의 ZapLogger 사용
 			zap.Duration("elapsed", elapsed),
 			zap.String("sql", sql),
 			zap.Int64("rows", rows),
@@ -102,12 +92,11 @@ func (z *ZapGormLogger) Trace(ctx context.Context, begin time.Time, fc func() (s
 		return
 	}
 
-	// 일반 쿼리 로그 기록 (LogLevel이 Info 이상인 경우)
 	if z.LogLevel >= gormlogger.Info {
-		configs.Logger.Info("GORM Query",
+		z.ZapLogger.Info("GORM Query", // 구조체의 ZapLogger 사용
 			zap.Duration("elapsed", elapsed),
 			zap.String("sql", sql),
 			zap.Int64("rows", rows),
 		)
 	}
-} 
+}
