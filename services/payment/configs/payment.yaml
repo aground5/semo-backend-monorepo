@@ -1,0 +1,23 @@
+service:
+  name: payment
+  environment: development
+  version: v1.0.0
+  client_url: http://localhost:3000
+  stripe_secret_key: REMOVED_STRIPE_TEST_SECRET_KEY
+  stripe_webhook_secret: REMOVED_STRIPE_WEBHOOK_SECRET
+  enable_test_endpoints: true
+
+server:
+  http:
+    host: 0.0.0.0
+    port: 8084
+  grpc:
+    host: 0.0.0.0
+    port: 9084
+
+log:
+  level: info
+  format: json
+
+jwt:
+  secret: <JWT 시크릿>
