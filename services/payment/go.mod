@@ -8,6 +8,7 @@ require (
 	github.com/labstack/echo/v4 v4.13.3
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.72.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
