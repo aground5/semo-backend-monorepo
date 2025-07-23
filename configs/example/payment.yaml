@@ -2,6 +2,10 @@ service:
   name: payment
   environment: production
   version: v1.0.0
+  client_url: ${CLIENT_URL}
+  stripe_secret_key: ${STRIPE_SECRET_KEY}
+  stripe_webhook_secret: ${STRIPE_WEBHOOK_SECRET}
+  enable_test_endpoints: false
 
 server:
   http:

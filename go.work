@@ -4,5 +4,6 @@ use (
 	./pkg
 	./proto
 	./services/geo
+	./services/payment
 	./tools
 )

@@ -8,6 +8,7 @@ setup:
 	@echo "개발 환경을 설정합니다..."
 	go mod download
 	cd services/geo && go mod download
+	cd services/payment && go mod download
 	cd tools && go mod download
 	go install github.com/vektra/mockery/v2@latest
 
@@ -16,6 +17,7 @@ tidy:
 	@echo "모든 모듈의 go.mod 파일을 정리합니다..."
 	cd pkg && go mod tidy
 	cd services/geo && go mod tidy
+	cd services/payment && go mod tidy
 	cd tools && go mod tidy
 	go work sync
 
@@ -28,6 +30,7 @@ run:
 build:
 	@echo "모든 서비스를 빌드합니다..."
 	go build -o bin/geo services/geo/cmd/server/main.go
+	go build -o bin/payment services/payment/cmd/server/main.go
 
 # 프로토콜 버퍼 코드 생성
 proto-gen:
@@ -42,6 +45,7 @@ test:
 	@echo "모든 테스트를 실행합니다..."
 	go test ./pkg/...
 	go test ./services/geo/...
+	go test ./services/payment/...
 
 # 린트 체크
 lint:
@@ -60,3 +64,12 @@ docker-geo:
 
 air-geo:
 	APP_SERVICE=geo air -c .air.toml -build.args_bin="--config=configs/dev/geo.yaml"
+
+# Docker 이미지 빌드 - payment
+docker-payment:
+	@echo "Payment 서비스 Docker 이미지를 빌드합니다..."
+	docker build -t payment-service -f deployments/docker/payment.Dockerfile .
+
+# Payment 서비스 개발 모드 실행 (hot reload)
+air-payment:
+	APP_SERVICE=payment air -c .air.toml -build.args_bin="--config=configs/dev/payment.yaml"
