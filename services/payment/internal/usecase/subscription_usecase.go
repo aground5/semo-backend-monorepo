@@ -11,13 +11,13 @@ import (
 
 type SubscriptionUsecase struct {
 	subscriptionRepo repository.SubscriptionRepository
-	logger          *zap.Logger
+	logger           *zap.Logger
 }
 
 func NewSubscriptionUsecase(subscriptionRepo repository.SubscriptionRepository, logger *zap.Logger) *SubscriptionUsecase {
 	return &SubscriptionUsecase{
 		subscriptionRepo: subscriptionRepo,
-		logger:          logger,
+		logger:           logger,
 	}
 }
 

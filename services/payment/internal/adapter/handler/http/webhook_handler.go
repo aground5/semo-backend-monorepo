@@ -2,24 +2,34 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/webhook"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
+	domainRepo "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/usecase"
 	"go.uber.org/zap"
 )
 
 type WebhookHandler struct {
-	logger        *zap.Logger
-	webhookSecret string
-	subscriptions map[string]*entity.Subscription
-	payments      []PaymentData
-	mu            sync.RWMutex
+	logger              *zap.Logger
+	webhookSecret       string
+	webhookRepo         repository.WebhookRepository
+	subscriptionRepo    domainRepo.SubscriptionRepository
+	paymentRepo         domainRepo.PaymentRepository
+	customerMappingRepo domainRepo.CustomerMappingRepository
+	planSyncService     *usecase.PlanSyncService
+	subscriptions       map[string]*entity.Subscription
+	payments            []PaymentData
+	mu                  sync.RWMutex
 }
 
 type PaymentData struct {
@@ -31,19 +41,26 @@ type PaymentData struct {
 	CreatedAt      time.Time
 }
 
-func NewWebhookHandler(logger *zap.Logger, webhookSecret string) *WebhookHandler {
+func NewWebhookHandler(logger *zap.Logger, webhookSecret string, webhookRepo repository.WebhookRepository, subscriptionRepo domainRepo.SubscriptionRepository, paymentRepo domainRepo.PaymentRepository, customerMappingRepo domainRepo.CustomerMappingRepository, planRepo repository.PlanRepository) *WebhookHandler {
+	planSyncService := usecase.NewPlanSyncService(planRepo, logger)
+
 	return &WebhookHandler{
-		logger:        logger,
-		webhookSecret: webhookSecret,
-		subscriptions: make(map[string]*entity.Subscription),
-		payments:      make([]PaymentData, 0),
+		logger:              logger,
+		webhookSecret:       webhookSecret,
+		webhookRepo:         webhookRepo,
+		subscriptionRepo:    subscriptionRepo,
+		paymentRepo:         paymentRepo,
+		customerMappingRepo: customerMappingRepo,
+		planSyncService:     planSyncService,
+		subscriptions:       make(map[string]*entity.Subscription),
+		payments:            make([]PaymentData, 0),
 	}
 }
 
 func (h *WebhookHandler) GetWebhookData(c echo.Context) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	
+
 	return c.JSON(http.StatusOK, echo.Map{
 		"subscriptions": h.subscriptions,
 		"payments":      h.payments,
@@ -57,20 +74,20 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 		h.logger.Error("Error reading request body", zap.Error(err))
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error reading request body"})
 	}
-	
+
 	sig := c.Request().Header.Get("Stripe-Signature")
-	
+
 	event, err := webhook.ConstructEventWithOptions(
-		body, 
-		sig, 
+		body,
+		sig,
 		h.webhookSecret,
 		webhook.ConstructEventOptions{
 			IgnoreAPIVersionMismatch: true,
 		},
 	)
-	
+
 	if err != nil {
-		h.logger.Error("Webhook signature verification failed", 
+		h.logger.Error("Webhook signature verification failed",
 			zap.Error(err),
 			zap.String("signature", sig),
 		)
@@ -78,13 +95,21 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			"error": "Webhook signature verification failed: " + err.Error(),
 		})
 	}
-	
+
 	h.logger.Info("Webhook Event Received",
 		zap.String("type", string(event.Type)),
 		zap.String("id", event.ID),
 		zap.Time("created", time.Unix(event.Created, 0)),
 	)
-	
+
+	// Save webhook event to database
+	if h.webhookRepo != nil {
+		if err := h.webhookRepo.SaveEvent(c.Request().Context(), event.ID, string(event.Type), event.Data.Raw); err != nil {
+			h.logger.Error("Failed to save webhook event", zap.Error(err))
+			// Continue processing even if save fails
+		}
+	}
+
 	switch event.Type {
 	case stripe.EventTypeCheckoutSessionCompleted:
 		var session stripe.CheckoutSession
@@ -92,96 +117,267 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			h.logger.Error("Error parsing checkout session", zap.Error(err))
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
 		}
-		
+
 		h.logger.Info("CHECKOUT SESSION COMPLETED",
 			zap.String("session_id", session.ID),
 			zap.String("customer_email", session.CustomerEmail),
 			zap.String("payment_status", string(session.PaymentStatus)),
 		)
-		
-		if session.Mode == "subscription" {
-			if session.Customer != nil && session.Customer.ID != "" {
-				h.mu.Lock()
-				h.subscriptions[session.Customer.ID] = &entity.Subscription{
-					CustomerID:    session.Customer.ID,
-					CustomerEmail: session.CustomerEmail,
-					Status:        "pending",
-					CreatedAt:     time.Now(),
-					UpdatedAt:     time.Now(),
-				}
-				h.mu.Unlock()
-				
-				h.logger.Info("Temporary subscription data saved",
-					zap.String("customer_id", session.Customer.ID),
-					zap.String("email", session.CustomerEmail),
-				)
+
+		// Extract user_id from session metadata
+		var userID string
+		if session.Metadata != nil {
+			if uid, ok := session.Metadata["user_id"]; ok {
+				userID = uid
+				h.logger.Info("Found user_id in session metadata",
+					zap.String("user_id", userID),
+					zap.String("session_id", session.ID))
 			}
 		}
-		
+
+		if session.Mode == "subscription" && session.Customer != nil && session.Customer.ID != "" {
+			// Save customer mapping if we have user_id
+			if userID != "" && isValidUUID(userID) && h.customerMappingRepo != nil {
+				customerMapping := &entity.CustomerMapping{
+					StripeCustomerID: session.Customer.ID,
+					UserID:           userID,
+					Email:            session.CustomerEmail,
+				}
+
+				h.logger.Info("Creating customer mapping from checkout session",
+					zap.String("customer_id", session.Customer.ID),
+					zap.String("user_id", userID),
+					zap.String("email", session.CustomerEmail))
+
+				// Check if mapping already exists
+				existing, _ := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), session.Customer.ID)
+				if existing == nil {
+					if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
+						h.logger.Error("Failed to save customer mapping",
+							zap.String("customer_id", session.Customer.ID),
+							zap.String("user_id", userID),
+							zap.String("email", session.CustomerEmail),
+							zap.Error(err))
+					} else {
+						h.logger.Info("Customer mapping saved successfully",
+							zap.String("customer_id", session.Customer.ID),
+							zap.String("user_id", userID),
+							zap.String("email", session.CustomerEmail))
+					}
+				} else {
+					h.logger.Info("Customer mapping already exists",
+						zap.String("customer_id", session.Customer.ID),
+						zap.String("existing_email", existing.Email))
+				}
+			}
+
+			h.mu.Lock()
+			h.subscriptions[session.Customer.ID] = &entity.Subscription{
+				CustomerID:    session.Customer.ID,
+				CustomerEmail: session.CustomerEmail,
+				Status:        "pending",
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
+			}
+			h.mu.Unlock()
+
+			h.logger.Info("Temporary subscription data saved",
+				zap.String("customer_id", session.Customer.ID),
+				zap.String("email", session.CustomerEmail),
+			)
+		}
+
 	case stripe.EventTypeCustomerSubscriptionCreated, stripe.EventTypeCustomerSubscriptionUpdated:
 		var rawData map[string]interface{}
 		if err := json.Unmarshal(event.Data.Raw, &rawData); err != nil {
 			h.logger.Error("Error parsing raw subscription data", zap.Error(err))
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
 		}
-		
+
 		subscriptionID, _ := rawData["id"].(string)
 		status, _ := rawData["status"].(string)
 		customerID, _ := rawData["customer"].(string)
-		
+
 		currentPeriodEnd := int64(0)
 		if cpe, ok := rawData["current_period_end"].(float64); ok {
 			currentPeriodEnd = int64(cpe)
 		}
-		
+
 		h.logger.Info("SUBSCRIPTION CREATED/UPDATED",
 			zap.String("subscription_id", subscriptionID),
 			zap.String("customer_id", customerID),
 			zap.String("status", status),
 			zap.Time("period_end", time.Unix(currentPeriodEnd, 0)),
 		)
-		
+
 		if customerID != "" {
-			h.mu.Lock()
-			
-			if existing, ok := h.subscriptions[customerID]; ok {
-				existing.ID = subscriptionID
-				existing.Status = status
-				existing.CurrentPeriodEnd = time.Unix(currentPeriodEnd, 0)
-				existing.UpdatedAt = time.Now()
+			// Extract user ID from metadata
+			var userID string
+			var customerEmail string
+
+			if metadata, ok := rawData["metadata"].(map[string]interface{}); ok {
+				userID, _ = metadata["user_id"].(string)
+				h.logger.Info("Extracted user ID from subscription metadata",
+					zap.String("user_id", userID),
+					zap.String("subscription_id", subscriptionID))
 			} else {
-				h.subscriptions[customerID] = &entity.Subscription{
-					ID:               subscriptionID,
-					CustomerID:       customerID,
-					Status:           status,
-					CurrentPeriodEnd: time.Unix(currentPeriodEnd, 0),
-					CreatedAt:        time.Now(),
-					UpdatedAt:        time.Now(),
+				h.logger.Warn("No metadata found in subscription data",
+					zap.String("subscription_id", subscriptionID))
+			}
+
+			// Try to extract customer email if customer object is expanded
+			if customer, ok := rawData["customer"].(map[string]interface{}); ok {
+				h.logger.Debug("Customer object is expanded in webhook",
+					zap.Any("customer_data", customer))
+
+				// Check for email in expanded customer object
+				if email, ok := customer["email"].(string); ok && email != "" {
+					customerEmail = email
+					h.logger.Info("Extracted customer email from expanded customer object",
+						zap.String("email", customerEmail),
+						zap.String("customer_id", customerID))
+				} else {
+					h.logger.Warn("No email found in expanded customer object",
+						zap.Any("customer_keys", getMapKeys(customer)))
+				}
+
+				// Also check customer metadata for user_id if not found in subscription
+				if userID == "" {
+					if customerMeta, ok := customer["metadata"].(map[string]interface{}); ok {
+						userID, _ = customerMeta["user_id"].(string)
+						h.logger.Info("Extracted user ID from customer metadata",
+							zap.String("user_id", userID),
+							zap.String("customer_id", customerID))
+					}
+				}
+			} else {
+				h.logger.Warn("Customer object is not expanded in webhook, only have customer ID",
+					zap.String("customer_id", customerID),
+					zap.String("raw_customer_type", fmt.Sprintf("%T", rawData["customer"])))
+			}
+
+			// Create subscription entity
+			subscription := &entity.Subscription{
+				ID:               subscriptionID,
+				CustomerID:       customerID,
+				CustomerEmail:    customerEmail, // Now populated from customer data
+				Status:           status,
+				CurrentPeriodEnd: time.Unix(currentPeriodEnd, 0),
+				CreatedAt:        time.Now(),
+				UpdatedAt:        time.Now(),
+			}
+
+			// If we have a valid user ID, save customer mapping
+			if userID != "" && isValidUUID(userID) && h.customerMappingRepo != nil {
+				h.logger.Info("Valid user ID found for subscription",
+					zap.String("user_id", userID),
+					zap.String("customer_id", customerID),
+					zap.String("subscription_id", subscriptionID))
+
+				// Check if mapping already exists
+				existing, _ := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), customerID)
+				if existing == nil {
+					customerMapping := &entity.CustomerMapping{
+						StripeCustomerID: customerID,
+						UserID:           userID,
+						Email:            customerEmail, // Use the extracted email
+					}
+
+					if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
+						h.logger.Error("Failed to save customer mapping",
+							zap.String("customer_id", customerID),
+							zap.String("user_id", userID),
+							zap.Error(err))
+					} else {
+						h.logger.Info("Customer mapping saved from subscription webhook",
+							zap.String("customer_id", customerID),
+							zap.String("user_id", userID),
+							zap.String("email", customerEmail))
+					}
+				} else if existing != nil && existing.Email == "" && customerEmail != "" {
+					// Update existing mapping with email if it was missing
+					existing.Email = customerEmail
+					if err := h.customerMappingRepo.Update(c.Request().Context(), existing); err != nil {
+						h.logger.Error("Failed to update customer mapping with email",
+							zap.String("customer_id", customerID),
+							zap.String("email", customerEmail),
+							zap.Error(err))
+					} else {
+						h.logger.Info("Updated customer mapping with email",
+							zap.String("customer_id", customerID),
+							zap.String("email", customerEmail))
+					}
 				}
 			}
-			
-			h.logger.Info("Subscription data saved",
-				zap.String("customer_id", customerID),
-				zap.String("subscription_id", subscriptionID),
-				zap.Time("period_end", time.Unix(currentPeriodEnd, 0)),
-			)
-			
+
+			// Extract additional data
+			if items, ok := rawData["items"].(map[string]interface{}); ok {
+				if data, ok := items["data"].([]interface{}); ok && len(data) > 0 {
+					if item, ok := data[0].(map[string]interface{}); ok {
+						if price, ok := item["price"].(map[string]interface{}); ok {
+							if product, ok := price["product"].(string); ok {
+								subscription.Items = []entity.SubscriptionItem{
+									{
+										ProductName:   product,
+										Amount:        0, // Would need to extract from price
+										Currency:      "KRW",
+										Interval:      "month",
+										IntervalCount: 1,
+									},
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Save to database
+			if h.subscriptionRepo != nil {
+				ctx := c.Request().Context()
+				var err error
+
+				// Check if subscription exists
+				existing, _ := h.subscriptionRepo.GetByID(ctx, subscriptionID)
+				if existing != nil {
+					// Update existing subscription
+					err = h.subscriptionRepo.Update(ctx, subscription)
+				} else {
+					// Create new subscription
+					err = h.subscriptionRepo.Save(ctx, subscription)
+				}
+
+				if err != nil {
+					h.logger.Error("Failed to save subscription to database",
+						zap.String("subscription_id", subscriptionID),
+						zap.Error(err))
+				} else {
+					h.logger.Info("Subscription saved to database",
+						zap.String("customer_id", customerID),
+						zap.String("subscription_id", subscriptionID),
+						zap.Time("period_end", time.Unix(currentPeriodEnd, 0)),
+					)
+				}
+			}
+
+			// Also update in-memory map for backward compatibility
+			h.mu.Lock()
+			h.subscriptions[customerID] = subscription
 			h.mu.Unlock()
 		}
-		
+
 	case stripe.EventTypeCustomerSubscriptionDeleted:
 		var rawData map[string]interface{}
 		if err := json.Unmarshal(event.Data.Raw, &rawData); err != nil {
 			h.logger.Error("Error parsing subscription deletion", zap.Error(err))
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
 		}
-		
+
 		customerID, _ := rawData["customer"].(string)
-		
+
 		h.logger.Info("SUBSCRIPTION DELETED",
 			zap.String("customer_id", customerID),
 		)
-		
+
 		if customerID != "" {
 			h.mu.Lock()
 			if sub, exists := h.subscriptions[customerID]; exists {
@@ -190,52 +386,179 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			}
 			h.mu.Unlock()
 		}
-	
+
 	case stripe.EventTypeInvoicePaymentSucceeded:
 		var invoice stripe.Invoice
 		if err := json.Unmarshal(event.Data.Raw, &invoice); err != nil {
 			h.logger.Error("Error parsing invoice", zap.Error(err))
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
 		}
-		
+
+		// Log raw data for debugging
+		h.logger.Debug("Raw invoice data", zap.Any("raw_data", event.Data.Raw))
+
 		h.logger.Info("PAYMENT SUCCEEDED",
 			zap.String("invoice_id", invoice.ID),
 			zap.Int64("amount_paid", invoice.AmountPaid),
+			zap.Bool("has_subscription", invoice.Subscription != nil),
+			zap.Bool("has_customer", invoice.Customer != nil),
 		)
-		
-		h.mu.Lock()
-		payment := PaymentData{
-			InvoiceID:  invoice.ID,
-			Amount:     invoice.AmountPaid,
-			Status:     "succeeded",
-			CreatedAt:  time.Now(),
-		}
-		
+
+		// Extract user ID from various sources
+		var userID string
+		customerID := ""
+
+		// Get customer ID
 		if invoice.Customer != nil {
-			payment.CustomerID = invoice.Customer.ID
+			customerID = invoice.Customer.ID
 		}
-		
-		if invoice.Subscription != nil {
-			payment.SubscriptionID = invoice.Subscription.ID
+
+		// Try to get user ID from invoice metadata first
+		if invoice.Metadata != nil {
+			if uid, ok := invoice.Metadata["user_id"]; ok {
+				userID = uid
+				h.logger.Info("Found user ID in invoice metadata",
+					zap.String("user_id", uid),
+					zap.String("invoice_id", invoice.ID))
+			}
 		}
-		
-		h.payments = append(h.payments, payment)
-		
-		if payment.CustomerID != "" {
-			if sub, exists := h.subscriptions[payment.CustomerID]; exists {
-				if invoice.Lines != nil && len(invoice.Lines.Data) > 0 {
-					line := invoice.Lines.Data[0]
-					if line.Period != nil && line.Period.End > 0 {
-						sub.CurrentPeriodEnd = time.Unix(line.Period.End, 0)
-						sub.UpdatedAt = time.Now()
-						h.logger.Info("Subscription period extended",
-							zap.Time("new_period_end", sub.CurrentPeriodEnd),
-						)
+
+		// If not in invoice metadata, try subscription metadata
+		if userID == "" && invoice.Subscription != nil {
+			h.logger.Info("Attempting to extract user_id from subscription metadata",
+				zap.String("subscription_id", invoice.Subscription.ID))
+
+			// Try to get user ID from subscription metadata in raw data
+			var rawInvoice map[string]interface{}
+			if err := json.Unmarshal(event.Data.Raw, &rawInvoice); err == nil {
+				// Check if subscription is a string (ID only) or object
+				subValue, hasSubscription := rawInvoice["subscription"]
+				h.logger.Debug("Subscription value type",
+					zap.String("type", fmt.Sprintf("%T", subValue)),
+					zap.Bool("has_subscription", hasSubscription))
+
+				// If subscription is just an ID string, we need to fetch from our DB
+				if subID, ok := subValue.(string); ok && subID != "" {
+					h.logger.Info("Subscription is ID only, fetching from database",
+						zap.String("subscription_id", subID))
+
+					// Try to get user_id from our subscription record
+					if h.subscriptionRepo != nil {
+						if sub, err := h.subscriptionRepo.GetByID(c.Request().Context(), subID); err == nil && sub != nil {
+							// The subscription entity should have user_id stored
+							h.logger.Info("Found subscription in database",
+								zap.String("subscription_id", subID))
+						}
 					}
+				} else if subData, ok := subValue.(map[string]interface{}); ok {
+					// Subscription is expanded object
+					if subMeta, ok := subData["metadata"].(map[string]interface{}); ok {
+						if uid, ok := subMeta["user_id"].(string); ok && isValidUUID(uid) {
+							userID = uid
+							h.logger.Info("Found user ID in subscription metadata",
+								zap.String("user_id", uid),
+								zap.String("subscription_id", invoice.Subscription.ID))
+						} else {
+							h.logger.Warn("No valid user_id in subscription metadata",
+								zap.Any("metadata", subMeta))
+						}
+					} else {
+						h.logger.Warn("No metadata in subscription object",
+							zap.Any("subscription", subData))
+					}
+				}
+			} else {
+				h.logger.Error("Failed to unmarshal raw invoice data", zap.Error(err))
+			}
+		}
+
+		// If still no user ID, try customer mapping
+		if (userID == "" || !isValidUUID(userID)) && customerID != "" && h.customerMappingRepo != nil {
+			h.logger.Info("Attempting to find user ID from customer mapping",
+				zap.String("customer_id", customerID))
+
+			mapping, err := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), customerID)
+			if err != nil {
+				h.logger.Error("Error fetching customer mapping",
+					zap.String("customer_id", customerID),
+					zap.Error(err))
+			} else if mapping != nil {
+				userID = mapping.UserID
+				h.logger.Info("Found user ID from customer mapping",
+					zap.String("user_id", userID),
+					zap.String("customer_id", customerID))
+			}
+		}
+
+		// Validate user ID - REQUIRED for payment processing
+		if userID == "" || !isValidUUID(userID) {
+			h.logger.Error("CRITICAL: Payment cannot be processed without valid user UUID",
+				zap.String("invoice_id", invoice.ID),
+				zap.String("customer_id", customerID),
+				zap.String("customer_email", invoice.CustomerEmail),
+				zap.String("extracted_user_id", userID),
+				zap.Bool("is_valid_uuid", isValidUUID(userID)),
+				zap.Int64("amount_paid", invoice.AmountPaid))
+
+			// Mark webhook as failed - this will cause Stripe to retry
+			return c.JSON(http.StatusBadRequest, echo.Map{
+				"error":   "Payment processing failed: User UUID is required",
+				"details": "No valid user_id found in invoice, subscription metadata, or customer mapping",
+			})
+		}
+
+		// Save payment to database with validated user ID
+		if h.paymentRepo != nil && invoice.Customer != nil {
+			paymentEntity := &entity.Payment{
+				UserID:        userID,
+				TransactionID: invoice.ID,
+				Amount:        float64(invoice.AmountPaid) / 100, // Convert cents to currency units
+				Currency:      string(invoice.Currency),
+				Status:        entity.PaymentStatusCompleted,
+				Method:        entity.PaymentMethodCard,
+				Metadata: map[string]interface{}{
+					"stripe_invoice_id":  invoice.ID,
+					"stripe_customer_id": invoice.Customer.ID,
+				},
+			}
+
+			if invoice.Subscription != nil {
+				paymentEntity.Metadata["stripe_subscription_id"] = invoice.Subscription.ID
+			}
+
+			if invoice.PaymentIntent != nil {
+				paymentEntity.TransactionID = invoice.PaymentIntent.ID
+				paymentEntity.Metadata["stripe_payment_intent_id"] = invoice.PaymentIntent.ID
+			}
+
+			if err := h.paymentRepo.Create(c.Request().Context(), paymentEntity); err != nil {
+				h.logger.Error("Failed to save payment to database",
+					zap.String("invoice_id", invoice.ID),
+					zap.String("user_id", userID),
+					zap.Error(err))
+
+				// Return error to make Stripe retry
+				return c.JSON(http.StatusInternalServerError, echo.Map{
+					"error": "Failed to save payment to database",
+				})
+			}
+
+			h.logger.Info("Payment saved to database successfully",
+				zap.String("payment_id", paymentEntity.ID),
+				zap.String("user_id", userID),
+				zap.Float64("amount", paymentEntity.Amount))
+
+			// Update subscription period if applicable
+			if invoice.Subscription != nil && invoice.Lines != nil && len(invoice.Lines.Data) > 0 {
+				line := invoice.Lines.Data[0]
+				if line.Period != nil && line.Period.End > 0 {
+					// Update subscription in database with new period end
+					h.logger.Info("Subscription period should be extended",
+						zap.String("subscription_id", invoice.Subscription.ID),
+						zap.Time("new_period_end", time.Unix(line.Period.End, 0)))
 				}
 			}
 		}
-		h.mu.Unlock()    
 
 	case stripe.EventTypeInvoicePaymentFailed:
 		var invoice stripe.Invoice
@@ -243,32 +566,79 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			h.logger.Error("Error parsing invoice", zap.Error(err))
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
 		}
-		
+
 		h.logger.Warn("PAYMENT FAILED",
 			zap.String("invoice_id", invoice.ID),
 			zap.Int64("amount_due", invoice.AmountDue),
 		)
-		
+
 		h.mu.Lock()
 		payment := PaymentData{
-			InvoiceID:  invoice.ID,
-			Amount:     invoice.AmountDue,
-			Status:     "failed",
-			CreatedAt:  time.Now(),
+			InvoiceID: invoice.ID,
+			Amount:    invoice.AmountDue,
+			Status:    "failed",
+			CreatedAt: time.Now(),
 		}
-		
+
 		if invoice.Customer != nil {
 			payment.CustomerID = invoice.Customer.ID
 		}
-		
+
 		h.payments = append(h.payments, payment)
 		h.mu.Unlock()
-		
+
+	case stripe.EventTypeProductCreated, stripe.EventTypeProductUpdated, stripe.EventTypeProductDeleted:
+		if h.planSyncService != nil {
+			if err := h.planSyncService.SyncProductEvent(c.Request().Context(), string(event.Type), event.Data.Raw); err != nil {
+				h.logger.Error("Failed to sync product event",
+					zap.String("event_type", string(event.Type)),
+					zap.Error(err))
+				return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to sync product"})
+			}
+			h.logger.Info("Product event synced successfully",
+				zap.String("event_type", string(event.Type)))
+		}
+
+	case stripe.EventTypePriceCreated, stripe.EventTypePriceUpdated, stripe.EventTypePriceDeleted:
+		if h.planSyncService != nil {
+			if err := h.planSyncService.SyncPriceEvent(c.Request().Context(), string(event.Type), event.Data.Raw); err != nil {
+				h.logger.Error("Failed to sync price event",
+					zap.String("event_type", string(event.Type)),
+					zap.Error(err))
+				return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to sync price"})
+			}
+			h.logger.Info("Price event synced successfully",
+				zap.String("event_type", string(event.Type)))
+		}
+
 	default:
 		h.logger.Warn("Unhandled event type",
 			zap.String("type", string(event.Type)),
 		)
 	}
-	
+
+	// Mark webhook as processed
+	if h.webhookRepo != nil {
+		if err := h.webhookRepo.MarkProcessed(c.Request().Context(), event.ID); err != nil {
+			h.logger.Error("Failed to mark webhook as processed", zap.Error(err))
+			// Continue even if marking fails
+		}
+	}
+
 	return c.JSON(http.StatusOK, echo.Map{"received": true})
+}
+
+// isValidUUID checks if a string is a valid UUID
+func isValidUUID(s string) bool {
+	_, err := uuid.Parse(s)
+	return err == nil
+}
+
+// getMapKeys returns the keys of a map as a slice for logging
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }

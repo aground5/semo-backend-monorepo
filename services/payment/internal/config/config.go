@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	Service ServiceConfig `yaml:"service"`
-	Server  ServerConfig  `yaml:"server"`
-	Log     LogConfig     `yaml:"log"`
-	JWT     JWTConfig     `yaml:"jwt"`
-	Email   EmailConfig   `yaml:"email"`
+	Service  ServiceConfig  `yaml:"service"`
+	Database DatabaseConfig `yaml:"database"`
+	Server   ServerConfig   `yaml:"server"`
+	Log      LogConfig      `yaml:"log"`
+	JWT      JWTConfig      `yaml:"jwt"`
+	Email    EmailConfig    `yaml:"email"`
 }
 
 func LoadConfig() (*Config, error) {
