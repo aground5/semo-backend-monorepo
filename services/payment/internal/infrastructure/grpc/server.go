@@ -26,7 +26,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) *Server {
 
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Server.GRPC.Host, s.config.Server.GRPC.Port)
-	
+
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
@@ -34,12 +34,12 @@ func (s *Server) Start() error {
 	s.listener = listener
 
 	s.server = grpc.NewServer()
-	
+
 	// Register payment service here
 	// pb.RegisterPaymentServiceServer(s.server, handler)
 
 	s.logger.Info("Starting gRPC server", zap.String("address", addr))
-	
+
 	return s.server.Serve(listener)
 }
 

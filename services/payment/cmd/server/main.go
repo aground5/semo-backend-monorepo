@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/config"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/database"
 	grpcServer "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/grpc"
 	httpServer "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/http"
 	"go.uber.org/zap"
@@ -27,13 +28,32 @@ func main() {
 	}
 	defer logger.Sync()
 
+	// Initialize database connection
+	db, err := database.NewConnection(&cfg.Database, logger)
+	if err != nil {
+		logger.Fatal("Failed to connect to database", zap.Error(err))
+	}
+	defer func() {
+		if err := database.Close(db, logger); err != nil {
+			logger.Error("Failed to close database connection", zap.Error(err))
+		}
+	}()
+
+	// Run database migrations
+	if err := database.Migrate(db, logger); err != nil {
+		logger.Fatal("Failed to run database migrations", zap.Error(err))
+	}
+
+	// Initialize repositories
+	repos := database.NewRepositories(db, logger)
+
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Initialize servers
 	grpcSrv := grpcServer.NewServer(cfg, logger)
-	httpSrv := httpServer.NewServer(cfg, logger)
+	httpSrv := httpServer.NewServer(cfg, logger, repos)
 
 	// Start servers
 	go func() {
