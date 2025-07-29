@@ -15,15 +15,17 @@ import (
 )
 
 type subscriptionRepository struct {
-	db     *gorm.DB
-	logger *zap.Logger
+	db                  *gorm.DB
+	logger              *zap.Logger
+	customerMappingRepo repository.CustomerMappingRepository
 }
 
 // NewSubscriptionRepository creates a new subscription repository
-func NewSubscriptionRepository(db *gorm.DB, logger *zap.Logger) repository.SubscriptionRepository {
+func NewSubscriptionRepository(db *gorm.DB, logger *zap.Logger, customerMappingRepo repository.CustomerMappingRepository) repository.SubscriptionRepository {
 	return &subscriptionRepository{
-		db:     db,
-		logger: logger,
+		db:                  db,
+		logger:              logger,
+		customerMappingRepo: customerMappingRepo,
 	}
 }
 
@@ -73,9 +75,12 @@ func (r *subscriptionRepository) GetByID(ctx context.Context, subscriptionID str
 
 // Save creates a new subscription
 func (r *subscriptionRepository) Save(ctx context.Context, subscription *entity.Subscription) error {
-	sub := r.entityToModel(subscription)
+	sub, err := r.entityToModel(ctx, subscription)
+	if err != nil {
+		return err
+	}
 
-	err := r.db.WithContext(ctx).Create(sub).Error
+	err = r.db.WithContext(ctx).Create(sub).Error
 	if err != nil {
 		r.logger.Error("Failed to save subscription",
 			zap.String("customer_id", subscription.CustomerID),
@@ -206,28 +211,33 @@ func (r *subscriptionRepository) modelToEntity(m *model.Subscription) *entity.Su
 }
 
 // entityToModel converts domain entity to database model
-func (r *subscriptionRepository) entityToModel(e *entity.Subscription) *model.Subscription {
+func (r *subscriptionRepository) entityToModel(ctx context.Context, e *entity.Subscription) (*model.Subscription, error) {
 	if e == nil {
-		return nil
+		return nil, nil
 	}
 
-	// Parse user ID from CustomerEmail field (where we temporarily stored it)
-	var userID uuid.UUID
-	if e.CustomerEmail != "" {
-		parsedID, err := uuid.Parse(e.CustomerEmail)
-		if err == nil {
-			userID = parsedID
-		} else {
-			// Fallback to generating a new one if parsing fails
-			userID, _ = uuid.NewRandom()
-			r.logger.Warn("Failed to parse user ID from CustomerEmail, using random UUID",
-				zap.String("customer_email", e.CustomerEmail),
-				zap.Error(err))
-		}
-	} else {
-		// Generate random UUID if no user ID provided
-		userID, _ = uuid.NewRandom()
-		r.logger.Warn("No user ID provided in subscription, using random UUID")
+	// Look up user ID from customer mapping
+	customerMapping, err := r.customerMappingRepo.GetByStripeCustomerID(ctx, e.CustomerID)
+	if err != nil {
+		r.logger.Error("Failed to get customer mapping",
+			zap.String("stripe_customer_id", e.CustomerID),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to get customer mapping: %w", err)
+	}
+	
+	if customerMapping == nil {
+		r.logger.Error("Customer mapping not found",
+			zap.String("stripe_customer_id", e.CustomerID))
+		return nil, fmt.Errorf("customer mapping not found for stripe customer ID: %s", e.CustomerID)
+	}
+
+	// Parse the user ID from the mapping
+	userID, err := uuid.Parse(customerMapping.UserID)
+	if err != nil {
+		r.logger.Error("Failed to parse user ID from customer mapping",
+			zap.String("user_id", customerMapping.UserID),
+			zap.Error(err))
+		return nil, fmt.Errorf("invalid user ID in customer mapping: %w", err)
 	}
 
 	m := &model.Subscription{
@@ -244,7 +254,7 @@ func (r *subscriptionRepository) entityToModel(e *entity.Subscription) *model.Su
 		m.CanceledAt = &now
 	}
 
-	return m
+	return m, nil
 }
 
 // mapEntityStatus maps entity status to model status

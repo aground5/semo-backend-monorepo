@@ -18,10 +18,13 @@ type Repositories struct {
 
 // NewRepositories creates new repository instances with database connection
 func NewRepositories(db *gorm.DB, logger *zap.Logger) *Repositories {
+	// Create customer mapping repository first as it's a dependency
+	customerMappingRepo := repository.NewCustomerMappingRepository(db)
+	
 	return &Repositories{
 		Payment:         repository.NewPaymentRepository(db, logger),
-		Subscription:    repository.NewSubscriptionRepository(db, logger),
-		CustomerMapping: repository.NewCustomerMappingRepository(db),
+		Subscription:    repository.NewSubscriptionRepository(db, logger, customerMappingRepo),
+		CustomerMapping: customerMappingRepo,
 		Webhook:         repository.NewWebhookRepository(db, logger),
 		Plan:            repository.NewPlanRepository(db, logger),
 	}
