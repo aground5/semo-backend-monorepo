@@ -40,7 +40,7 @@ CREATE TYPE webhook_status AS ENUM (
 ### 2. Core table
 
 ```jsx
--- 구독 플랜 (최소한의 정보만)
+-- 구독 플랜 (실제 구현)
 CREATE TABLE subscription_plans (
     id BIGSERIAL PRIMARY KEY,
     stripe_price_id VARCHAR(100) UNIQUE NOT NULL,
@@ -48,6 +48,7 @@ CREATE TABLE subscription_plans (
 
     -- 표시 정보
     display_name VARCHAR(200) NOT NULL,
+    type VARCHAR(20) NOT NULL DEFAULT 'subscription', -- 'subscription' or 'one_time'
     credits_per_cycle INTEGER NOT NULL,
 
     -- 우리 서비스 고유 정보
@@ -62,10 +63,10 @@ CREATE TABLE subscription_plans (
 CREATE INDEX idx_plans_stripe_price ON subscription_plans(stripe_price_id);
 CREATE INDEX idx_plans_active ON subscription_plans(is_active) WHERE is_active = TRUE;
 
--- 사용자 구독 정보 (user_profiles 대체)
+-- 사용자 구독 정보 (실제 구현)
 CREATE TABLE subscriptions (
     id BIGSERIAL PRIMARY KEY,
-    user_id UUID NOT NULL,  -- Supabase user ID (외부 참조, FK 없음)
+    user_id UUID NOT NULL,  -- 외부 참조, FK 없음
 
     -- Stripe 정보
     stripe_customer_id VARCHAR(100) NOT NULL,
@@ -132,16 +133,26 @@ CREATE INDEX idx_credit_transactions_user_created ON credit_transactions(user_id
 CREATE INDEX idx_credit_transactions_reference ON credit_transactions(reference_id)
 WHERE reference_id IS NOT NULL;
 
--- 사용자별 현재 잔액 (Materialized View)
-CREATE MATERIALIZED VIEW user_credit_balances AS
-SELECT DISTINCT ON (user_id)
-    user_id,
-    balance_after as current_balance,
-    created_at as last_transaction_at
-FROM credit_transactions
-ORDER BY user_id, created_at DESC;
+-- 사용자별 현재 잔액 (일반 테이블로 구현됨)
+-- GORM은 Materialized View를 직접 지원하지 않으므로 일반 테이블로 관리
+CREATE TABLE user_credit_balances (
+    user_id UUID PRIMARY KEY,
+    current_balance DECIMAL(15,2) NOT NULL,
+    last_transaction_at TIMESTAMPTZ NOT NULL
+);
 
-CREATE UNIQUE INDEX idx_user_credit_balances_user_id ON user_credit_balances(user_id);
+-- Stripe Customer ID 매핑 테이블 (추가됨)
+CREATE TABLE customer_mappings (
+    id BIGSERIAL PRIMARY KEY,
+    stripe_customer_id VARCHAR(100) UNIQUE NOT NULL,
+    user_id UUID NOT NULL,
+    customer_email VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_customer_mappings_user_id ON customer_mappings(user_id);
+CREATE INDEX idx_customer_mappings_stripe_customer ON customer_mappings(stripe_customer_id);
 
 -- 크레딧 추가 함수 (변경 없음)
 CREATE OR REPLACE FUNCTION add_credits(
@@ -201,8 +212,12 @@ BEGIN
         p_description, p_reference_id, p_idempotency_key
     ) RETURNING id INTO transaction_id;
 
-    -- Refresh materialized view
-    REFRESH MATERIALIZED VIEW CONCURRENTLY user_credit_balances;
+    -- user_credit_balances 테이블 업데이트 (materialized view 대신)
+    INSERT INTO user_credit_balances (user_id, current_balance, last_transaction_at)
+    VALUES (p_user_id, new_balance, NOW())
+    ON CONFLICT (user_id) DO UPDATE
+    SET current_balance = EXCLUDED.current_balance,
+        last_transaction_at = EXCLUDED.last_transaction_at;
 
     -- Release lock
     PERFORM pg_advisory_unlock(lock_key);
@@ -283,7 +298,7 @@ CREATE INDEX idx_webhook_events_status ON stripe_webhook_events(status);
 CREATE INDEX idx_webhook_events_unprocessed ON stripe_webhook_events(created_at)
 WHERE status IN ('pending', 'failed');
 
--- 결제 기록 (user_profiles 참조 제거)
+-- 결제 기록 (실제 구현)
 CREATE TABLE payments (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID NOT NULL,  -- 외부 참조
@@ -506,10 +521,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 ### 5. Security and Audit Framework
 
 ```sql
--- 감사 로그 (user_profiles 참조 제거)
+-- 감사 로그 (실제 구현)
 CREATE TABLE audit_log (
     id BIGSERIAL PRIMARY KEY,
-    user_id UUID,  -- 외부 참조
+    user_id UUID,  -- 외부 참조 (nullable)
     action VARCHAR(100) NOT NULL,
     table_name VARCHAR(100) NOT NULL,
     record_id BIGINT,
@@ -524,30 +539,57 @@ CREATE INDEX idx_audit_log_user_id ON audit_log(user_id);
 CREATE INDEX idx_audit_log_table_action ON audit_log(table_name, action);
 CREATE INDEX idx_audit_log_created_at ON audit_log(created_at);
 
--- 감사 트리거 함수
+-- 감사 트리거 함수 (개선된 버전)
+-- customer_mappings 등 user_id가 없는 테이블도 처리 가능
 CREATE OR REPLACE FUNCTION audit_table_changes() RETURNS TRIGGER AS $$
 DECLARE
     current_user_id UUID;
+    v_user_id UUID;
+    v_record_id BIGINT;
 BEGIN
-    current_user_id := COALESCE(
-        (current_setting('app.current_user_id', true))::UUID,
-        CASE
-            WHEN TG_OP = 'DELETE' THEN OLD.user_id
-            ELSE NEW.user_id
-        END
-    );
+    -- Try to get user context from session
+    BEGIN
+        current_user_id := (current_setting('app.current_user_id', true))::UUID;
+    EXCEPTION WHEN OTHERS THEN
+        current_user_id := NULL;
+    END;
 
+    -- If no session user, try to extract from the record
+    IF current_user_id IS NULL THEN
+        -- Handle different cases based on operation
+        IF TG_OP = 'DELETE' THEN
+            -- Try to get user_id from OLD record
+            BEGIN
+                EXECUTE format('SELECT ($1).user_id') INTO v_user_id USING OLD;
+            EXCEPTION WHEN OTHERS THEN
+                v_user_id := NULL;
+            END;
+            v_record_id := OLD.id;
+        ELSE
+            -- Try to get user_id from NEW record
+            BEGIN
+                EXECUTE format('SELECT ($1).user_id') INTO v_user_id USING NEW;
+            EXCEPTION WHEN OTHERS THEN
+                v_user_id := NULL;
+            END;
+            v_record_id := NEW.id;
+        END IF;
+
+        current_user_id := v_user_id;
+    END IF;
+
+    -- Perform the audit log insert
     IF TG_OP = 'DELETE' THEN
         INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, ip_address)
-        VALUES (current_user_id, 'DELETE', TG_TABLE_NAME, OLD.id, to_jsonb(OLD), inet_client_addr());
+        VALUES (current_user_id, 'DELETE', TG_TABLE_NAME, v_record_id, to_jsonb(OLD), inet_client_addr());
         RETURN OLD;
     ELSIF TG_OP = 'UPDATE' THEN
         INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values, ip_address)
-        VALUES (current_user_id, 'UPDATE', TG_TABLE_NAME, NEW.id, to_jsonb(OLD), to_jsonb(NEW), inet_client_addr());
+        VALUES (current_user_id, 'UPDATE', TG_TABLE_NAME, v_record_id, to_jsonb(OLD), to_jsonb(NEW), inet_client_addr());
         RETURN NEW;
     ELSIF TG_OP = 'INSERT' THEN
         INSERT INTO audit_log (user_id, action, table_name, record_id, new_values, ip_address)
-        VALUES (current_user_id, 'INSERT', TG_TABLE_NAME, NEW.id, to_jsonb(NEW), inet_client_addr());
+        VALUES (current_user_id, 'INSERT', TG_TABLE_NAME, v_record_id, to_jsonb(NEW), inet_client_addr());
         RETURN NEW;
     END IF;
 END;
@@ -564,6 +606,10 @@ CREATE TRIGGER audit_credit_transactions
 
 CREATE TRIGGER audit_payments
     AFTER INSERT OR UPDATE OR DELETE ON payments
+    FOR EACH ROW EXECUTE FUNCTION audit_table_changes();
+
+CREATE TRIGGER audit_customer_mappings
+    AFTER INSERT OR UPDATE OR DELETE ON customer_mappings
     FOR EACH ROW EXECUTE FUNCTION audit_table_changes();
 
 -- RLS 설정 (간소화)
@@ -630,7 +676,7 @@ CREATE OR REPLACE FUNCTION refresh_analytics() RETURNS VOID AS $$
 BEGIN
     REFRESH MATERIALIZED VIEW CONCURRENTLY subscription_analytics;
     REFRESH MATERIALIZED VIEW CONCURRENTLY credit_usage_analytics;
-    REFRESH MATERIALIZED VIEW CONCURRENTLY user_credit_balances;
+    -- user_credit_balances는 일반 테이블이므로 refresh 불필요
 END;
 $$ LANGUAGE plpgsql;
 
@@ -713,22 +759,26 @@ END;
 $$ LANGUAGE plpgsql;
 ```
 
-## Integration with Supabase Auth
+## 구현 주요 사항
 
-### Setting Up User Context
+### GORM 마이그레이션
 
-```jsx
-// Set current user context for RLS (in your application code)
-const setUserContext = async (supabaseClient, userId) => {
-  await supabaseClient.rpc('set_user_context', { user_id: userId });
-};
+이 스키마는 Go의 GORM ORM을 사용하여 구현되었습니다:
 
--- SQL function to set user context
-CREATE OR REPLACE FUNCTION set_user_context(user_id UUID)
-RETURNS VOID AS $$
-BEGIN
-    PERFORM set_config('app.current_user_id', user_id::TEXT, true);
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+- 자동 마이그레이션은 `internal/infrastructure/database/migrate.go`에서 처리
+- PostgreSQL 확장 및 커스텀 타입이 마이그레이션 전에 생성됨
+- 감사 트리거와 함수는 마이그레이션 후 적용됨
 
+### 주요 변경사항
+
+1. **customer_mappings 테이블 추가**: Stripe Customer ID와 사용자 ID 매핑 관리
+2. **subscription_plans.type 필드 추가**: 구독 유형 (subscription/one_time) 구분
+3. **user_credit_balances**: Materialized View 대신 일반 테이블로 구현 (GORM 호환성)
+4. **audit 트리거 개선**: user_id가 없는 경우에도 안전하게 처리
+
+### RLS (Row Level Security) 사용
+
+```go
+// Go 애플리케이션에서 사용자 컨텍스트 설정
+db.Exec("SELECT set_user_context(?)", userID)
 ```
