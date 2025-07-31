@@ -6,6 +6,9 @@ service:
   stripe_secret_key: REMOVED_STRIPE_TEST_SECRET_KEY
   stripe_webhook_secret: REMOVED_STRIPE_WEBHOOK_SECRET
   enable_test_endpoints: true
+  supabase:
+    jwt_secret: REMOVED_SUPABASE_JWT_SECRET
+    project_url: https://fjctbfwohrqdmrdyqbig.supabase.co
 
 server:
   http:
@@ -20,7 +23,7 @@ log:
   format: json
 
 jwt:
-  secret: <JWT 시크릿>
+  secret:
 
 database:
   host: localhost

@@ -11,6 +11,7 @@ import (
 	handlers "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/handler/http"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/config"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/database"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/middleware/auth"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/usecase"
 	"go.uber.org/zap"
 )
@@ -70,29 +71,48 @@ func (s *Server) setupRoutes() {
 	// Initialize handlers
 	plansHandler := handlers.NewPlansHandler(s.logger, s.repos.Plan)
 	checkoutHandler := handlers.NewCheckoutHandler(s.logger, s.config.Service.ClientURL, s.repos.CustomerMapping)
-	subscriptionHandler := handlers.NewSubscriptionHandler(s.logger)
+	subscriptionHandler := handlers.NewSubscriptionHandler(s.logger, s.repos.CustomerMapping)
 	webhookHandler := handlers.NewWebhookHandler(s.logger, s.config.Service.StripeWebhookSecret, s.repos.Webhook, s.repos.Subscription, s.repos.Payment, s.repos.CustomerMapping, s.repos.Plan)
 	paymentUsecase := usecase.NewPaymentUsecase(s.repos.Payment, nil, s.logger)
 	paymentHandler := handlers.NewPaymentHandler(paymentUsecase, s.logger)
 
+	// JWT middleware configuration
+	jwtConfig := auth.JWTConfig{
+		Secret: s.config.Service.Supabase.JWTSecret,
+		Logger: s.logger,
+		SkipPaths: []string{
+			"/health",
+			"/webhook",
+			"/api/v1/plans",
+			"/api/v1/internal/webhook-data",
+		},
+	}
+
 	// API v1 routes
 	v1 := s.echo.Group("/api/v1")
 
-	// Plans & Pricing
+	// Public routes (no authentication required)
+	// Plans & Pricing - public for browsing
 	v1.GET("/plans", plansHandler.GetPlans)                          // All plans (backward compatibility)
 	v1.GET("/plans/subscription", plansHandler.GetSubscriptionPlans) // Subscription plans only
 	v1.GET("/plans/one-time", plansHandler.GetOneTimePlans)          // One-time payment plans only
 
-	// Subscriptions - RESTful style
-	subscriptions := v1.Group("/subscriptions")
+	// Protected routes (require JWT authentication)
+	protected := v1.Group("", auth.JWTMiddleware(jwtConfig))
+
+	// Subscriptions - RESTful style (all require authentication)
+	subscriptions := protected.Group("/subscriptions")
 	subscriptions.POST("", checkoutHandler.CreateSubscription)
 	subscriptions.GET("/current", subscriptionHandler.GetCurrentSubscription)
 	subscriptions.DELETE("/:id", subscriptionHandler.CancelSubscription)
 	subscriptions.POST("/portal", checkoutHandler.CreatePortalSession)
+	
+	// Checkout session status endpoint (requires authentication)
+	protected.GET("/checkout/session/:sessionId", checkoutHandler.CheckSessionStatus)
 
-	// Payment routes (existing)
-	v1.GET("/payments/:id", paymentHandler.GetPayment)
-	v1.GET("/payments", paymentHandler.GetUserPayments)
+	// Payment routes (require authentication)
+	protected.GET("/payments/:id", paymentHandler.GetPayment)
+	protected.GET("/payments", paymentHandler.GetUserPayments)
 
 	// Internal/Debug routes
 	internal := v1.Group("/internal")
