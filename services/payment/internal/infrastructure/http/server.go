@@ -72,7 +72,7 @@ func (s *Server) setupRoutes() {
 	plansHandler := handlers.NewPlansHandler(s.logger, s.repos.Plan)
 	checkoutHandler := handlers.NewCheckoutHandler(s.logger, s.config.Service.ClientURL, s.repos.CustomerMapping)
 	subscriptionHandler := handlers.NewSubscriptionHandler(s.logger, s.repos.CustomerMapping)
-	webhookHandler := handlers.NewWebhookHandler(s.logger, s.config.Service.StripeWebhookSecret, s.repos.Webhook, s.repos.Subscription, s.repos.Payment, s.repos.CustomerMapping, s.repos.Plan)
+	webhookHandler := handlers.NewWebhookHandler(s.logger, s.config.Service.StripeWebhookSecret, s.repos.Webhook, s.repos.Subscription, s.repos.Payment, s.repos.CustomerMapping, s.repos.Credit, s.repos.Plan)
 	paymentUsecase := usecase.NewPaymentUsecase(s.repos.Payment, nil, s.logger)
 	paymentHandler := handlers.NewPaymentHandler(paymentUsecase, s.logger)
 
@@ -106,7 +106,7 @@ func (s *Server) setupRoutes() {
 	subscriptions.GET("/current", subscriptionHandler.GetCurrentSubscription)
 	subscriptions.DELETE("/:id", subscriptionHandler.CancelSubscription)
 	subscriptions.POST("/portal", checkoutHandler.CreatePortalSession)
-	
+
 	// Checkout session status endpoint (requires authentication)
 	protected.GET("/checkout/session/:sessionId", checkoutHandler.CheckSessionStatus)
 

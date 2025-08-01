@@ -26,6 +26,7 @@ type WebhookHandler struct {
 	subscriptionRepo    domainRepo.SubscriptionRepository
 	paymentRepo         domainRepo.PaymentRepository
 	customerMappingRepo domainRepo.CustomerMappingRepository
+	creditService       *usecase.CreditService
 	planSyncService     *usecase.PlanSyncService
 	subscriptions       map[string]*entity.Subscription
 	payments            []PaymentData
@@ -41,8 +42,9 @@ type PaymentData struct {
 	CreatedAt      time.Time
 }
 
-func NewWebhookHandler(logger *zap.Logger, webhookSecret string, webhookRepo repository.WebhookRepository, subscriptionRepo domainRepo.SubscriptionRepository, paymentRepo domainRepo.PaymentRepository, customerMappingRepo domainRepo.CustomerMappingRepository, planRepo repository.PlanRepository) *WebhookHandler {
+func NewWebhookHandler(logger *zap.Logger, webhookSecret string, webhookRepo repository.WebhookRepository, subscriptionRepo domainRepo.SubscriptionRepository, paymentRepo domainRepo.PaymentRepository, customerMappingRepo domainRepo.CustomerMappingRepository, creditRepo domainRepo.CreditRepository, planRepo repository.PlanRepository) *WebhookHandler {
 	planSyncService := usecase.NewPlanSyncService(planRepo, logger)
+	creditService := usecase.NewCreditService(creditRepo, subscriptionRepo, planRepo, logger)
 
 	return &WebhookHandler{
 		logger:              logger,
@@ -51,6 +53,7 @@ func NewWebhookHandler(logger *zap.Logger, webhookSecret string, webhookRepo rep
 		subscriptionRepo:    subscriptionRepo,
 		paymentRepo:         paymentRepo,
 		customerMappingRepo: customerMappingRepo,
+		creditService:       creditService,
 		planSyncService:     planSyncService,
 		subscriptions:       make(map[string]*entity.Subscription),
 		payments:            make([]PaymentData, 0),
@@ -394,14 +397,119 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
 		}
 
+		// Extract subscription ID from raw data if not in invoice object
+		var extractedSubscriptionID string
+		if invoice.Subscription != nil {
+			extractedSubscriptionID = invoice.Subscription.ID
+		} else {
+			// Try to extract from raw data
+			var rawInvoice map[string]interface{}
+			if err := json.Unmarshal(event.Data.Raw, &rawInvoice); err == nil {
+				// Try multiple paths to find subscription ID
+				// Path 1: Direct subscription field
+				if subValue, ok := rawInvoice["subscription"]; ok {
+					if subID, ok := subValue.(string); ok && subID != "" {
+						extractedSubscriptionID = subID
+						h.logger.Info("Extracted subscription ID from raw invoice data (direct field)",
+							zap.String("subscription_id", extractedSubscriptionID))
+					} else if subObj, ok := subValue.(map[string]interface{}); ok {
+						if id, ok := subObj["id"].(string); ok {
+							extractedSubscriptionID = id
+							h.logger.Info("Extracted subscription ID from subscription object",
+								zap.String("subscription_id", extractedSubscriptionID))
+						}
+					}
+				}
+				
+				// Path 2: parent.subscription_item_details.subscription
+				if extractedSubscriptionID == "" {
+					if parent, ok := rawInvoice["parent"].(map[string]interface{}); ok {
+						if subItemDetails, ok := parent["subscription_item_details"].(map[string]interface{}); ok {
+							if subValue, ok := subItemDetails["subscription"]; ok {
+								if subID, ok := subValue.(string); ok && subID != "" {
+									extractedSubscriptionID = subID
+									h.logger.Info("Extracted subscription ID from parent.subscription_item_details.subscription",
+										zap.String("subscription_id", extractedSubscriptionID))
+								}
+							}
+						}
+					}
+				}
+				
+				// Path 3: parent.subscription_details.subscription
+				if extractedSubscriptionID == "" {
+					if parent, ok := rawInvoice["parent"].(map[string]interface{}); ok {
+						if subDetails, ok := parent["subscription_details"].(map[string]interface{}); ok {
+							if subValue, ok := subDetails["subscription"]; ok {
+								if subID, ok := subValue.(string); ok && subID != "" {
+									extractedSubscriptionID = subID
+									h.logger.Info("Extracted subscription ID from parent.subscription_details.subscription",
+										zap.String("subscription_id", extractedSubscriptionID))
+								}
+							}
+						}
+					}
+				}
+				
+				// Path 4: Check in line items for subscription field
+				if extractedSubscriptionID == "" {
+					if lines, ok := rawInvoice["lines"].(map[string]interface{}); ok {
+						if data, ok := lines["data"].([]interface{}); ok && len(data) > 0 {
+							if lineItem, ok := data[0].(map[string]interface{}); ok {
+								if subValue, ok := lineItem["subscription"]; ok {
+									if subID, ok := subValue.(string); ok && subID != "" {
+										extractedSubscriptionID = subID
+										h.logger.Info("Extracted subscription ID from line item",
+											zap.String("subscription_id", extractedSubscriptionID))
+									}
+								}
+								// Also check subscription_item field
+								if extractedSubscriptionID == "" {
+									if subItem, ok := lineItem["subscription_item"]; ok {
+										if subItemStr, ok := subItem.(string); ok && subItemStr != "" {
+											// subscription_item might contain the subscription ID
+											h.logger.Debug("Found subscription_item in line item",
+												zap.String("subscription_item", subItemStr))
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				
+				// Log what paths we've checked if still no subscription ID
+				if extractedSubscriptionID == "" {
+					h.logger.Warn("Could not find subscription ID in any known paths",
+						zap.Bool("has_subscription_field", rawInvoice["subscription"] != nil),
+						zap.Bool("has_parent", rawInvoice["parent"] != nil))
+					
+					// Debug: Log the structure to find where subscription ID might be
+					if parent, ok := rawInvoice["parent"]; ok && parent != nil {
+						if parentMap, ok := parent.(map[string]interface{}); ok {
+							h.logger.Debug("Parent object structure", zap.Any("parent_keys", getMapKeys(parentMap)))
+						}
+					}
+					
+					// Also check and log top-level keys
+					h.logger.Debug("Top-level invoice keys", zap.Any("keys", getMapKeys(rawInvoice)))
+				}
+			}
+		}
+
 		// Log raw data for debugging
-		h.logger.Debug("Raw invoice data", zap.Any("raw_data", event.Data.Raw))
+		h.logger.Info("=== CREDIT ALLOCATION FLOW ANALYSIS START ===",
+			zap.String("invoice_id", invoice.ID),
+			zap.Int64("amount_paid", invoice.AmountPaid),
+			zap.String("currency", string(invoice.Currency)))
+		h.logger.Debug("Raw invoice webhook data", zap.ByteString("raw_data", event.Data.Raw))
 
 		h.logger.Info("PAYMENT SUCCEEDED",
 			zap.String("invoice_id", invoice.ID),
 			zap.Int64("amount_paid", invoice.AmountPaid),
 			zap.Bool("has_subscription", invoice.Subscription != nil),
 			zap.Bool("has_customer", invoice.Customer != nil),
+			zap.String("extracted_subscription_id", extractedSubscriptionID),
 		)
 
 		// Extract user ID from various sources
@@ -522,8 +630,8 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 				},
 			}
 
-			if invoice.Subscription != nil {
-				paymentEntity.Metadata["stripe_subscription_id"] = invoice.Subscription.ID
+			if extractedSubscriptionID != "" {
+				paymentEntity.Metadata["stripe_subscription_id"] = extractedSubscriptionID
 			}
 
 			if invoice.PaymentIntent != nil {
@@ -547,6 +655,212 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 				zap.String("payment_id", paymentEntity.ID),
 				zap.String("user_id", userID),
 				zap.Float64("amount", paymentEntity.Amount))
+
+			// CREDIT ALLOCATION ANALYSIS - Check preconditions
+			h.logger.Info("Credit allocation precondition check",
+				zap.Bool("has_credit_service", h.creditService != nil),
+				zap.Bool("has_invoice_lines", invoice.Lines != nil),
+				zap.Int("line_items_count", func() int {
+					if invoice.Lines != nil {
+						return len(invoice.Lines.Data)
+					}
+					return 0
+				}()),
+				zap.String("user_id", userID))
+
+			// Allocate credits for the payment
+			if h.creditService != nil && invoice.Lines != nil && len(invoice.Lines.Data) > 0 {
+				h.logger.Info("Starting credit allocation process",
+					zap.String("invoice_id", invoice.ID),
+					zap.String("user_id", userID))
+
+				// Use the subscription ID we extracted earlier
+				subscriptionID := extractedSubscriptionID
+
+				// Extract product metadata from the raw invoice data
+				var rawInvoice map[string]interface{}
+				if err := json.Unmarshal(event.Data.Raw, &rawInvoice); err == nil {
+					h.logger.Info("Successfully parsed raw invoice data for credit allocation")
+
+					// Try to get metadata from the line items
+					h.logger.Info("Analyzing line items for credit metadata")
+					if lines, ok := rawInvoice["lines"].(map[string]interface{}); ok {
+						h.logger.Info("Found lines object in raw invoice data")
+						if data, ok := lines["data"].([]interface{}); ok && len(data) > 0 {
+							h.logger.Info("Found line items data", zap.Int("count", len(data)))
+							if lineItem, ok := data[0].(map[string]interface{}); ok {
+								h.logger.Debug("Processing first line item", zap.Any("line_item", lineItem))
+								// Get price information - navigate through pricing -> price_details -> price
+								var stripePriceID string
+								if pricing, ok := lineItem["pricing"].(map[string]interface{}); ok {
+									h.logger.Info("Found pricing object in line item")
+									if priceDetails, ok := pricing["price_details"].(map[string]interface{}); ok {
+										h.logger.Info("Found price_details in pricing object")
+										// Note: price is a string, not an object
+										if priceID, ok := priceDetails["price"].(string); ok {
+											stripePriceID = priceID
+											h.logger.Info("Extracted Stripe price ID", zap.String("price_id", stripePriceID))
+										} else {
+											h.logger.Warn("No price string found in price_details")
+										}
+									} else {
+										h.logger.Warn("No price_details found in pricing object")
+									}
+								} else {
+									h.logger.Warn("No pricing object found in line item", zap.Any("line_item_keys", getMapKeys(lineItem)))
+								}
+
+								// Check if we have the product object directly in lineItem (it might be expanded there)
+								if stripePriceID != "" {
+									// First check if product is expanded in the lineItem itself
+									if product, ok := lineItem["product"].(map[string]interface{}); ok {
+										h.logger.Info("Product is expanded in line item")
+										h.logger.Debug("Product data", zap.Any("product", product))
+										// Product is expanded, check for metadata
+										if metadata, ok := product["metadata"].(map[string]interface{}); ok {
+											h.logger.Info("Found product metadata", zap.Any("metadata", metadata))
+
+											// Log all available keys in metadata for debugging
+											metadataKeys := make([]string, 0, len(metadata))
+											for key := range metadata {
+												metadataKeys = append(metadataKeys, key)
+											}
+											h.logger.Info("Available metadata keys",
+												zap.Strings("keys", metadataKeys),
+												zap.Int("key_count", len(metadataKeys)))
+
+											if creditsStr, ok := metadata["credits_per_cycle"].(string); ok {
+												h.logger.Info("Found credits_per_cycle in metadata", zap.String("credits_str", creditsStr))
+												var credits int
+												n, err := fmt.Sscanf(creditsStr, "%d", &credits)
+												if err != nil || n != 1 {
+													h.logger.Error("Failed to parse credits_per_cycle",
+														zap.String("credits_str", creditsStr),
+														zap.Error(err),
+														zap.Int("parsed_count", n))
+												} else {
+													h.logger.Info("Successfully parsed credits from metadata", zap.Int("credits", credits))
+												}
+
+												productName := "Subscription"
+												if name, ok := product["name"].(string); ok {
+													productName = name
+													h.logger.Info("Extracted product name", zap.String("product_name", productName))
+												}
+
+												// Allocate credits using metadata
+												h.logger.Info("ATTEMPTING CREDIT ALLOCATION WITH METADATA",
+													zap.String("invoice_id", invoice.ID),
+													zap.String("user_id", userID),
+													zap.Int("credits", credits),
+													zap.String("product_name", productName))
+
+												if err := h.creditService.AllocateCreditsWithMetadata(
+													c.Request().Context(),
+													uuid.MustParse(userID),
+													invoice.ID,
+													credits,
+													productName,
+												); err != nil {
+													h.logger.Error("CREDIT ALLOCATION FROM METADATA FAILED",
+														zap.String("invoice_id", invoice.ID),
+														zap.String("user_id", userID),
+														zap.Int("credits", credits),
+														zap.String("product_name", productName),
+														zap.Error(err))
+												} else {
+													h.logger.Info("CREDIT ALLOCATION FROM METADATA SUCCESSFUL",
+														zap.String("invoice_id", invoice.ID),
+														zap.String("user_id", userID),
+														zap.Int("credits", credits),
+														zap.String("product_name", productName))
+												}
+											} else {
+												h.logger.Warn("No credits_per_cycle found in product metadata",
+													zap.Any("available_keys", func() []string {
+														keys := make([]string, 0, len(metadata))
+														for k := range metadata {
+															keys = append(keys, k)
+														}
+														return keys
+													}()))
+											}
+										} else {
+											h.logger.Warn("No metadata found in expanded product object")
+										}
+									} else {
+										// Product is not expanded, try to get from our database
+										h.logger.Info("Product not expanded, attempting credit allocation from database",
+											zap.String("price_id", stripePriceID),
+											zap.String("subscription_id", func() string {
+												if subscriptionID != "" {
+													return subscriptionID
+												}
+												return "none"
+											}()))
+
+										if subscriptionID == "" {
+											h.logger.Error("Cannot allocate credits from database: no subscription ID",
+												zap.String("invoice_id", invoice.ID))
+										} else {
+											h.logger.Info("ATTEMPTING CREDIT ALLOCATION FROM DATABASE",
+												zap.String("invoice_id", invoice.ID),
+												zap.String("user_id", userID),
+												zap.String("subscription_id", subscriptionID),
+												zap.String("price_id", stripePriceID))
+
+											if err := h.creditService.AllocateCreditsForPayment(
+												c.Request().Context(),
+												uuid.MustParse(userID),
+												invoice.ID,
+												subscriptionID,
+												stripePriceID,
+											); err != nil {
+												h.logger.Error("CREDIT ALLOCATION FROM DATABASE FAILED",
+													zap.String("invoice_id", invoice.ID),
+													zap.String("user_id", userID),
+													zap.String("subscription_id", subscriptionID),
+													zap.String("price_id", stripePriceID),
+													zap.Error(err))
+											} else {
+												h.logger.Info("CREDIT ALLOCATION FROM DATABASE SUCCESSFUL",
+													zap.String("invoice_id", invoice.ID),
+													zap.String("user_id", userID),
+													zap.String("subscription_id", subscriptionID),
+													zap.String("price_id", stripePriceID))
+											}
+										}
+									}
+								} else {
+									h.logger.Error("Cannot allocate credits: no price ID found")
+								}
+							} else {
+								h.logger.Warn("First line item is not a map object")
+							}
+						} else {
+							h.logger.Warn("No line items data found or empty")
+						}
+					} else {
+						h.logger.Warn("No lines object found in raw invoice data")
+					}
+				} else {
+					h.logger.Error("Failed to parse raw invoice for credit allocation",
+						zap.String("invoice_id", invoice.ID),
+						zap.Error(err))
+				}
+			} else {
+				h.logger.Warn("Credit allocation skipped - preconditions not met",
+					zap.Bool("has_credit_service", h.creditService != nil),
+					zap.Bool("has_invoice_lines", invoice.Lines != nil),
+					zap.Int("line_items_count", func() int {
+						if invoice.Lines != nil {
+							return len(invoice.Lines.Data)
+						}
+						return 0
+					}()))
+			}
+
+			h.logger.Info("=== CREDIT ALLOCATION FLOW ANALYSIS END ===")
 
 			// Update subscription period if applicable
 			if invoice.Subscription != nil && invoice.Lines != nil && len(invoice.Lines.Data) > 0 {

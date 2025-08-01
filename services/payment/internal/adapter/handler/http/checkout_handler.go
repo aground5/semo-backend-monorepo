@@ -36,8 +36,8 @@ type CreateCheckoutRequest struct {
 type CreateCheckoutResponse struct {
 	ID           string `json:"id"`
 	URL          string `json:"url,omitempty"`          // Hosted mode only
-	CheckoutURL  string `json:"checkout_url,omitempty"`  // Hosted mode only (legacy)
-	ClientSecret string `json:"clientSecret,omitempty"`  // Embedded mode only
+	CheckoutURL  string `json:"checkout_url,omitempty"` // Hosted mode only (legacy)
+	ClientSecret string `json:"clientSecret,omitempty"` // Embedded mode only
 	Status       string `json:"status"`
 	SessionID    string `json:"sessionId"`
 }
@@ -138,22 +138,22 @@ func (h *CheckoutHandler) CreateSubscription(c echo.Context) error {
 	}
 
 	// Mode에 따라 다른 응답 반환
-		h.logger.Info("Checkout session created for embedded mode",
-			zap.String("session_id", s.ID),
-			zap.Bool("has_client_secret", s.ClientSecret != ""))
+	h.logger.Info("Checkout session created for embedded mode",
+		zap.String("session_id", s.ID),
+		zap.Bool("has_client_secret", s.ClientSecret != ""))
 
-		return c.JSON(http.StatusCreated, CreateCheckoutResponse{
-			ID:           s.ID,
-			ClientSecret: s.ClientSecret,
-			Status:       "pending",
-			SessionID:    s.ID,
-		})
+	return c.JSON(http.StatusCreated, CreateCheckoutResponse{
+		ID:           s.ID,
+		ClientSecret: s.ClientSecret,
+		Status:       "pending",
+		SessionID:    s.ID,
+	})
 }
 
 // Optional: Return URL 핸들러 추가 (필요한 경우)
 func (h *CheckoutHandler) HandleReturn(c echo.Context) error {
 	sessionID := c.QueryParam("session_id")
-	
+
 	if sessionID == "" {
 		return c.JSON(http.StatusBadRequest, echo.Map{
 			"error": "Session ID required",
@@ -174,11 +174,11 @@ func (h *CheckoutHandler) HandleReturn(c echo.Context) error {
 	// 결제 성공 여부 확인
 	if s.Status == "complete" && s.PaymentStatus == "paid" {
 		// 성공 페이지로 리다이렉트
-		return c.Redirect(http.StatusFound, h.clientURL + "/?success=true")
+		return c.Redirect(http.StatusFound, h.clientURL+"/?success=true")
 	}
 
 	// 실패 또는 취소된 경우
-	return c.Redirect(http.StatusFound, h.clientURL + "/?canceled=true")
+	return c.Redirect(http.StatusFound, h.clientURL+"/?canceled=true")
 }
 
 type CreatePortalRequest struct {
@@ -230,12 +230,12 @@ func (h *CheckoutHandler) CheckSessionStatus(c echo.Context) error {
 	}
 
 	sessionID := c.Param("sessionId")
-	
+
 	h.logger.Info("Checking session status",
 		zap.String("session_id", sessionID),
 		zap.String("user_id", user.UserID),
 	)
-	
+
 	s, err := checkoutsession.Get(sessionID, nil)
 	if err != nil {
 		h.logger.Error("Failed to retrieve session",
@@ -246,7 +246,7 @@ func (h *CheckoutHandler) CheckSessionStatus(c echo.Context) error {
 			"error": "Failed to retrieve session",
 		})
 	}
-	
+
 	// Validate user ownership of the session
 	sessionUserID, exists := s.Metadata["user_id"]
 	if !exists || sessionUserID != user.UserID {
@@ -260,13 +260,13 @@ func (h *CheckoutHandler) CheckSessionStatus(c echo.Context) error {
 			"code":  "SESSION_ACCESS_DENIED",
 		})
 	}
-	
+
 	// Get customer ID - handle both ID and expandable object
 	var customerID string
 	if s.Customer != nil {
 		customerID = s.Customer.ID
 	}
-	
+
 	h.logger.Info("Session status retrieved",
 		zap.String("session_id", sessionID),
 		zap.String("status", string(s.Status)),
@@ -274,10 +274,10 @@ func (h *CheckoutHandler) CheckSessionStatus(c echo.Context) error {
 		zap.String("customer_id", customerID),
 		zap.String("user_id", user.UserID),
 	)
-	
+
 	return c.JSON(http.StatusOK, echo.Map{
-		"status": s.Status,
+		"status":        s.Status,
 		"paymentStatus": s.PaymentStatus,
-		"customerId": customerID,
+		"customerId":    customerID,
 	})
 }
