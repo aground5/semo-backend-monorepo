@@ -224,7 +224,7 @@ func (r *subscriptionRepository) entityToModel(ctx context.Context, e *entity.Su
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to get customer mapping: %w", err)
 	}
-	
+
 	if customerMapping == nil {
 		r.logger.Error("Customer mapping not found",
 			zap.String("stripe_customer_id", e.CustomerID))

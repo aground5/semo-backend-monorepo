@@ -47,7 +47,7 @@ func JWTMiddleware(config JWTConfig) echo.MiddlewareFunc {
 			// Extract token from Authorization header
 			authHeader := c.Request().Header.Get("Authorization")
 			if authHeader == "" {
-				config.Logger.Warn("Missing authorization header", 
+				config.Logger.Warn("Missing authorization header",
 					zap.String("path", path),
 					zap.String("method", c.Request().Method))
 				return c.JSON(http.StatusUnauthorized, echo.Map{
