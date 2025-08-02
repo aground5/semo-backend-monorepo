@@ -203,6 +203,39 @@ func (r *paymentRepository) List(ctx context.Context, limit, offset int) ([]*ent
 	return entities, nil
 }
 
+func (r *paymentRepository) GetRecentByUserID(ctx context.Context, userID string, limit int) ([]*entity.Payment, error) {
+	var payments []model.Payment
+
+	uuid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	query := r.db.WithContext(ctx).
+		Where("user_id = ?", uuid).
+		Order("created_at DESC")
+	
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	err = query.Find(&payments).Error
+	if err != nil {
+		r.logger.Error("Failed to get recent payments by user ID",
+			zap.String("user_id", userID),
+			zap.Int("limit", limit),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to get recent payments: %w", err)
+	}
+
+	entities := make([]*entity.Payment, len(payments))
+	for i, p := range payments {
+		entities[i] = r.modelToEntity(&p)
+	}
+
+	return entities, nil
+}
+
 // modelToEntity converts database model to domain entity
 func (r *paymentRepository) modelToEntity(m *model.Payment) *entity.Payment {
 	if m == nil {

@@ -13,4 +13,5 @@ type PaymentRepository interface {
 	Update(ctx context.Context, payment *entity.Payment) error
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context, limit, offset int) ([]*entity.Payment, error)
+	GetRecentByUserID(ctx context.Context, userID string, limit int) ([]*entity.Payment, error)
 }
