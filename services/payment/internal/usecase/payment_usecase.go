@@ -67,3 +67,18 @@ func (u *PaymentUsecase) UpdatePaymentStatus(ctx context.Context, id string, sta
 	payment.Status = status
 	return u.paymentRepo.Update(ctx, payment)
 }
+
+func (u *PaymentUsecase) GetUserRecentPayments(ctx context.Context, userID string, limit int) ([]*entity.Payment, error) {
+	if userID == "" {
+		return nil, errors.New("user ID is required")
+	}
+
+	// Validate limit parameter
+	if limit < 1 {
+		limit = 10 // Default limit
+	} else if limit > 100 {
+		limit = 100 // Maximum limit
+	}
+
+	return u.paymentRepo.GetRecentByUserID(ctx, userID, limit)
+}
