@@ -9,12 +9,13 @@ import (
 
 // Repositories holds all repository instances
 type Repositories struct {
-	Payment         domainRepo.PaymentRepository
-	Subscription    domainRepo.SubscriptionRepository
-	CustomerMapping domainRepo.CustomerMappingRepository
-	Credit          domainRepo.CreditRepository
-	Webhook         repository.WebhookRepository
-	Plan            repository.PlanRepository
+	Payment           domainRepo.PaymentRepository
+	Subscription      domainRepo.SubscriptionRepository
+	CustomerMapping   domainRepo.CustomerMappingRepository
+	Credit            domainRepo.CreditRepository
+	CreditTransaction domainRepo.CreditTransactionRepository
+	Webhook           repository.WebhookRepository
+	Plan              repository.PlanRepository
 }
 
 // NewRepositories creates new repository instances with database connection
@@ -23,11 +24,12 @@ func NewRepositories(db *gorm.DB, logger *zap.Logger) *Repositories {
 	customerMappingRepo := repository.NewCustomerMappingRepository(db)
 
 	return &Repositories{
-		Payment:         repository.NewPaymentRepository(db, logger),
-		Subscription:    repository.NewSubscriptionRepository(db, logger, customerMappingRepo),
-		CustomerMapping: customerMappingRepo,
-		Credit:          repository.NewCreditRepository(db, logger),
-		Webhook:         repository.NewWebhookRepository(db, logger),
-		Plan:            repository.NewPlanRepository(db, logger),
+		Payment:           repository.NewPaymentRepository(db, logger),
+		Subscription:      repository.NewSubscriptionRepository(db, logger, customerMappingRepo),
+		CustomerMapping:   customerMappingRepo,
+		Credit:            repository.NewCreditRepository(db, logger),
+		CreditTransaction: repository.NewCreditTransactionRepository(db, logger),
+		Webhook:           repository.NewWebhookRepository(db, logger),
+		Plan:              repository.NewPlanRepository(db, logger),
 	}
 }
