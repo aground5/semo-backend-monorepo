@@ -70,6 +70,7 @@ func (s *Server) setupRoutes() {
 
 	// Initialize services
 	subscriptionService := usecase.NewSubscriptionService(s.repos.CustomerMapping, s.repos.Subscription, s.logger)
+	creditService := usecase.NewCreditService(s.repos.Credit, s.repos.Subscription, s.repos.Plan, s.logger)
 
 	// Initialize handlers
 	plansHandler := handlers.NewPlansHandler(s.logger, s.repos.Plan)
@@ -78,6 +79,7 @@ func (s *Server) setupRoutes() {
 	webhookHandler := handlers.NewWebhookHandler(s.logger, s.config.Service.StripeWebhookSecret, s.repos.Webhook, s.repos.Subscription, s.repos.Payment, s.repos.CustomerMapping, s.repos.Credit, s.repos.Plan)
 	paymentUsecase := usecase.NewPaymentUsecase(s.repos.Payment, nil, s.logger)
 	paymentHandler := handlers.NewPaymentHandler(paymentUsecase, s.logger)
+	creditHandler := handlers.NewCreditHandler(s.logger, creditService)
 
 	// JWT middleware configuration
 	jwtConfig := auth.JWTConfig{
@@ -117,6 +119,9 @@ func (s *Server) setupRoutes() {
 	protected.GET("/payments/recent", paymentHandler.GetUserRecentPayments) // This route must come before /payments/:id
 	protected.GET("/payments/:id", paymentHandler.GetPayment)
 	protected.GET("/payments", paymentHandler.GetUserPayments)
+
+	// Credit routes (require authentication)
+	protected.GET("/credits", creditHandler.GetUserCredits)
 
 	// Internal/Debug routes
 	internal := v1.Group("/internal")
