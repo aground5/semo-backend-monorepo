@@ -113,6 +113,8 @@ func JWTMiddleware(config JWTConfig) echo.MiddlewareFunc {
 				ctx := context.WithValue(c.Request().Context(), userContextKey, authUser)
 				c.SetRequest(c.Request().WithContext(ctx))
 
+				c.Set("user_id", userID)
+
 				config.Logger.Debug("User authenticated successfully",
 					zap.String("user_id", userID),
 					zap.String("email", email),
