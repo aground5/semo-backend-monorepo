@@ -35,20 +35,6 @@ func (u *SubscriptionUsecase) GetCurrentSubscription(ctx context.Context, custom
 	return subscription, nil
 }
 
-func (u *SubscriptionUsecase) CancelSubscription(ctx context.Context, subscriptionID string) error {
-	if subscriptionID == "" {
-		return errors.New("subscription ID is required")
-	}
-
-	err := u.subscriptionRepo.Cancel(ctx, subscriptionID)
-	if err != nil {
-		u.logger.Error("Failed to cancel subscription", zap.Error(err))
-		return err
-	}
-
-	return nil
-}
-
 func (u *SubscriptionUsecase) SaveSubscription(ctx context.Context, subscription *entity.Subscription) error {
 	if subscription == nil {
 		return errors.New("subscription is required")

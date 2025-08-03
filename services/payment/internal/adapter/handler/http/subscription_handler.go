@@ -1,27 +1,27 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/stripe/stripe-go/v76"
-	"github.com/stripe/stripe-go/v76/subscription"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
-	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
+	domainErrors "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/errors"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/middleware/auth"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/usecase"
 	"go.uber.org/zap"
 )
 
 type SubscriptionHandler struct {
-	logger              *zap.Logger
-	customerMappingRepo repository.CustomerMappingRepository
+	logger               *zap.Logger
+	subscriptionService  *usecase.SubscriptionService
 }
 
-func NewSubscriptionHandler(logger *zap.Logger, customerMappingRepo repository.CustomerMappingRepository) *SubscriptionHandler {
+func NewSubscriptionHandler(logger *zap.Logger, subscriptionService *usecase.SubscriptionService) *SubscriptionHandler {
 	return &SubscriptionHandler{
-		logger:              logger,
-		customerMappingRepo: customerMappingRepo,
+		logger:               logger,
+		subscriptionService:  subscriptionService,
 	}
 }
 
@@ -37,73 +37,57 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 		return err // RequireAuth already returns the JSON error response
 	}
 
-	// Look up customer ID from user ID
-	customerMapping, err := h.customerMappingRepo.GetByUserID(c.Request().Context(), user.UserID)
-	if err != nil {
-		h.logger.Error("Failed to get customer mapping",
-			zap.String("user_id", user.UserID),
-			zap.Error(err))
-		return c.JSON(http.StatusInternalServerError, echo.Map{
-			"error": "Failed to retrieve customer information",
-		})
-	}
-
-	if customerMapping == nil {
-		h.logger.Info("No customer mapping found for user",
-			zap.String("user_id", user.UserID))
-		return c.JSON(http.StatusNotFound, echo.Map{
-			"error":   "No subscription found",
-			"message": "User has no associated Stripe customer",
-		})
-	}
-
-	customerID := customerMapping.StripeCustomerID
-
 	h.logger.Info("Getting current subscription",
-		zap.String("customer_id", customerID),
 		zap.String("user_id", user.UserID),
 	)
 
-	params := &stripe.SubscriptionListParams{
-		Customer: stripe.String(customerID),
-		Status:   stripe.String("all"),
-	}
-	params.AddExpand("data.items.data.price.product")
-
-	iter := subscription.List(params)
-
-	var activeSub *stripe.Subscription
-	for iter.Next() {
-		sub := iter.Subscription()
-		if sub.Status == "active" || sub.Status == "trialing" {
-			activeSub = sub
-			break
+	// Get active subscription for the user
+	activeSub, err := h.subscriptionService.GetActiveSubscriptionForUser(c.Request().Context(), user.UserID)
+	if err != nil {
+		h.logger.Error("Failed to get active subscription",
+			zap.String("user_id", user.UserID),
+			zap.Error(err))
+		if errors.Is(err, domainErrors.ErrNoCustomerMapping) {
+			return c.JSON(http.StatusNotFound, echo.Map{
+				"error":   "No subscription found",
+				"message": "User has no associated Stripe customer",
+			})
 		}
-	}
-
-	if err := iter.Err(); err != nil {
-		h.logger.Error("Error listing subscriptions", zap.Error(err))
+		if errors.Is(err, domainErrors.ErrNoActiveSubscription) {
+			return c.JSON(http.StatusNotFound, echo.Map{
+				"error": "No active subscription found",
+			})
+		}
 		return c.JSON(http.StatusInternalServerError, echo.Map{
-			"error": err.Error(),
+			"error": "Failed to retrieve subscription information",
 		})
 	}
 
-	if activeSub == nil {
-		return c.JSON(http.StatusNotFound, echo.Map{
-			"error": "No active subscription found",
-		})
+	customerID := ""
+	if activeSub.Customer != nil {
+		customerID = activeSub.Customer.ID
 	}
 
 	var items []entity.SubscriptionItem
 	for _, item := range activeSub.Items.Data {
 		var productName string
-		if item.Price.Product != nil {
-			productName = item.Price.Product.Name
+		// Try to get product name from different sources
+		if item.Price != nil {
+			// First try: Price nickname (often contains the product name)
+			if item.Price.Nickname != "" {
+				productName = item.Price.Nickname
+			} else if item.Price.Product != nil && item.Price.Product.Name != "" {
+				// Second try: Product name if already expanded
+				productName = item.Price.Product.Name
+			} else {
+				// Fallback: Use a generic name
+				productName = "Subscription"
+			}
 		}
 
 		var interval string
 		var intervalCount int64
-		if item.Price.Recurring != nil {
+		if item.Price != nil && item.Price.Recurring != nil {
 			interval = string(item.Price.Recurring.Interval)
 			intervalCount = item.Price.Recurring.IntervalCount
 		}
@@ -133,44 +117,104 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 	})
 }
 
-func (h *SubscriptionHandler) CancelSubscription(c echo.Context) error {
-	subscriptionID := c.Param("id")
-
-	h.logger.Info("Canceling subscription",
-		zap.String("subscription_id", subscriptionID),
-	)
-
-	sub, err := subscription.Update(
-		subscriptionID,
-		&stripe.SubscriptionParams{
-			CancelAtPeriodEnd: stripe.Bool(true),
-		},
-	)
-
+// CancelCurrentSubscription cancels the authenticated user's active subscription
+// This is a secure endpoint that uses JWT authentication to identify the user
+// and automatically finds their active subscription to cancel
+func (h *SubscriptionHandler) CancelCurrentSubscription(c echo.Context) error {
+	// Get authenticated user from JWT
+	user, err := auth.RequireAuth(c)
 	if err != nil {
-		stripeErr, ok := err.(*stripe.Error)
-		if ok && stripeErr.Code == stripe.ErrorCodeResourceMissing {
+		return err // RequireAuth already returns the JSON error response
+	}
+
+	h.logger.Info("Attempting to cancel current subscription",
+		zap.String("user_id", user.UserID),
+	)
+
+	// Cancel the user's active subscription
+	updatedSub, err := h.subscriptionService.CancelSubscriptionForUser(c.Request().Context(), user.UserID)
+	if err != nil {
+		h.logger.Error("Failed to cancel subscription",
+			zap.String("user_id", user.UserID),
+			zap.Error(err))
+		
+		// Handle specific error cases
+		if errors.Is(err, domainErrors.ErrNoCustomerMapping) {
 			return c.JSON(http.StatusNotFound, echo.Map{
-				"error": "Subscription not found",
+				"error":   "No subscription found",
+				"message": "User has no associated Stripe customer",
+				"code":    "NO_CUSTOMER_MAPPING",
 			})
 		}
-
-		h.logger.Error("Error canceling subscription", zap.Error(err))
+		if errors.Is(err, domainErrors.ErrNoActiveSubscription) {
+			return c.JSON(http.StatusNotFound, echo.Map{
+				"error":   "No active subscription found",
+				"message": "User has no active subscription to cancel",
+				"code":    "NO_ACTIVE_SUBSCRIPTION",
+			})
+		}
+		
 		return c.JSON(http.StatusInternalServerError, echo.Map{
-			"error": err.Error(),
+			"error": "Failed to cancel subscription",
+			"code":  "CANCELLATION_FAILED",
 		})
 	}
 
-	h.logger.Info("Subscription canceled",
-		zap.String("subscription_id", sub.ID),
-		zap.Time("cancel_at", time.Unix(sub.CurrentPeriodEnd, 0)),
+	h.logger.Info("Subscription canceled successfully",
+		zap.String("subscription_id", updatedSub.ID),
+		zap.String("user_id", user.UserID),
+		zap.Time("cancel_at", time.Unix(updatedSub.CurrentPeriodEnd, 0)),
 	)
 
+	// Build response with subscription details
+	var items []entity.SubscriptionItem
+	for _, item := range updatedSub.Items.Data {
+		var productName string
+		// Try to get product name from different sources
+		if item.Price != nil {
+			// First try: Price nickname (often contains the product name)
+			if item.Price.Nickname != "" {
+				productName = item.Price.Nickname
+			} else if item.Price.Product != nil && item.Price.Product.Name != "" {
+				// Second try: Product name if already expanded
+				productName = item.Price.Product.Name
+			} else {
+				// Fallback: Use a generic name
+				productName = "Subscription"
+			}
+		}
+
+		var interval string
+		var intervalCount int64
+		if item.Price != nil && item.Price.Recurring != nil {
+			interval = string(item.Price.Recurring.Interval)
+			intervalCount = item.Price.Recurring.IntervalCount
+		}
+
+		items = append(items, entity.SubscriptionItem{
+			ProductName:   productName,
+			Amount:        item.Price.UnitAmount,
+			Currency:      string(item.Price.Currency),
+			Interval:      interval,
+			IntervalCount: intervalCount,
+		})
+	}
+
+	customerID := ""
+	if updatedSub.Customer != nil {
+		customerID = updatedSub.Customer.ID
+	}
+
 	return c.JSON(http.StatusOK, echo.Map{
-		"id":                   sub.ID,
-		"status":               sub.Status,
-		"cancel_at_period_end": sub.CancelAtPeriodEnd,
-		"cancel_at":            sub.CurrentPeriodEnd,
-		"message":              "Subscription will be canceled at the end of the current period",
+		"subscription": entity.Subscription{
+			ID:                updatedSub.ID,
+			CustomerID:        customerID,
+			Status:            string(updatedSub.Status),
+			CurrentPeriodEnd:  time.Unix(updatedSub.CurrentPeriodEnd, 0),
+			CancelAtPeriodEnd: updatedSub.CancelAtPeriodEnd,
+			Items:             items,
+		},
+		"message": "Subscription will be canceled at the end of the current billing period",
+		"cancel_at": time.Unix(updatedSub.CurrentPeriodEnd, 0).Format(time.RFC3339),
 	})
 }
