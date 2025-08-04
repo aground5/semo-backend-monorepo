@@ -51,3 +51,20 @@ func (f *TransactionFilters) SetDefaults() {
 		f.Offset = 0
 	}
 }
+
+// UseCreditRequest represents the request body for using credits
+type UseCreditRequest struct {
+	Amount         string                 `json:"amount" validate:"required"`
+	FeatureName    string                 `json:"feature_name" validate:"required,min=1,max=100"`
+	Description    string                 `json:"description" validate:"required,min=1,max=500"`
+	UsageMetadata  map[string]interface{} `json:"usage_metadata,omitempty"`
+	IdempotencyKey *string                `json:"idempotency_key,omitempty" validate:"omitempty,uuid4"`
+}
+
+// UseCreditResponse represents the response for credit usage
+type UseCreditResponse struct {
+	Success       bool   `json:"success"`
+	TransactionID int64  `json:"transaction_id"`
+	BalanceAfter  string `json:"balance_after"`
+	Message       string `json:"message"`
+}
