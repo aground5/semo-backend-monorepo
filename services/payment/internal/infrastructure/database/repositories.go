@@ -22,12 +22,15 @@ type Repositories struct {
 func NewRepositories(db *gorm.DB, logger *zap.Logger) *Repositories {
 	// Create customer mapping repository first as it's a dependency
 	customerMappingRepo := repository.NewCustomerMappingRepository(db)
+	
+	// Create credit repository as it's a dependency for subscription repository
+	creditRepo := repository.NewCreditRepository(db, logger)
 
 	return &Repositories{
 		Payment:           repository.NewPaymentRepository(db, logger),
-		Subscription:      repository.NewSubscriptionRepository(db, logger, customerMappingRepo),
+		Subscription:      repository.NewSubscriptionRepository(db, logger, customerMappingRepo, creditRepo),
 		CustomerMapping:   customerMappingRepo,
-		Credit:            repository.NewCreditRepository(db, logger),
+		Credit:            creditRepo,
 		CreditTransaction: repository.NewCreditTransactionRepository(db, logger),
 		Webhook:           repository.NewWebhookRepository(db, logger),
 		Plan:              repository.NewPlanRepository(db, logger),

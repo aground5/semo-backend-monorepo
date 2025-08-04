@@ -12,10 +12,11 @@ import (
 type TransactionType string
 
 const (
-	TransactionTypeCreditAllocation TransactionType = "credit_allocation"
-	TransactionTypeCreditUsage      TransactionType = "credit_usage"
-	TransactionTypeRefund           TransactionType = "refund"
-	TransactionTypeAdjustment       TransactionType = "adjustment"
+	TransactionTypeCreditAllocation       TransactionType = "credit_allocation"
+	TransactionTypeCreditUsage            TransactionType = "credit_usage"
+	TransactionTypeRefund                 TransactionType = "refund"
+	TransactionTypeAdjustment             TransactionType = "adjustment"
+	TransactionTypeSubscriptionCancellation TransactionType = "subscription_cancellation"
 )
 
 // Scan implements sql.Scanner interface
