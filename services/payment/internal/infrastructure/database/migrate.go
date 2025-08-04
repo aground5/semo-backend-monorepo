@@ -216,8 +216,31 @@ func createCustomTypes(db *gorm.DB) error {
 	// Check if transaction_type exists
 	db.Raw(`SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'transaction_type')`).Scan(&exists)
 	if !exists {
-		if err := db.Exec(`CREATE TYPE transaction_type AS ENUM ('credit_allocation', 'credit_usage', 'refund', 'adjustment')`).Error; err != nil {
+		if err := db.Exec(`CREATE TYPE transaction_type AS ENUM ('credit_allocation', 'credit_usage', 'refund', 'adjustment', 'subscription_cancellation')`).Error; err != nil {
 			return err
+		}
+	} else {
+		// For existing enum, check if subscription_cancellation value exists and add it if missing
+		var hasSubscriptionCancellation bool
+		db.Raw(`SELECT EXISTS (
+			SELECT 1 FROM pg_enum 
+			WHERE enumlabel = 'subscription_cancellation' 
+			AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'transaction_type')
+		)`).Scan(&hasSubscriptionCancellation)
+		
+		if !hasSubscriptionCancellation {
+			// Add the new enum value to existing type
+			// Note: ALTER TYPE ADD VALUE cannot be executed inside a transaction block in some PostgreSQL versions
+			if err := db.Exec(`ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'subscription_cancellation'`).Error; err != nil {
+				// This might fail if we're inside a transaction
+				// Try to commit first and retry
+				_ = db.Exec(`COMMIT`).Error // Ignore error, might not be in a transaction
+				if err := db.Exec(`ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'subscription_cancellation'`).Error; err != nil {
+					// If it still fails, just log and continue
+					// The application might be running with an older database
+					// Users should run the migration script manually: migrations/001_add_subscription_cancellation_enum.sql
+				}
+			}
 		}
 	}
 

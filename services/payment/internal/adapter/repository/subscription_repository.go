@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/model"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
@@ -18,14 +19,16 @@ type subscriptionRepository struct {
 	db                  *gorm.DB
 	logger              *zap.Logger
 	customerMappingRepo repository.CustomerMappingRepository
+	creditRepo          repository.CreditRepository
 }
 
 // NewSubscriptionRepository creates a new subscription repository
-func NewSubscriptionRepository(db *gorm.DB, logger *zap.Logger, customerMappingRepo repository.CustomerMappingRepository) repository.SubscriptionRepository {
+func NewSubscriptionRepository(db *gorm.DB, logger *zap.Logger, customerMappingRepo repository.CustomerMappingRepository, creditRepo repository.CreditRepository) repository.SubscriptionRepository {
 	return &subscriptionRepository{
 		db:                  db,
 		logger:              logger,
 		customerMappingRepo: customerMappingRepo,
+		creditRepo:          creditRepo,
 	}
 }
 
@@ -133,25 +136,111 @@ func (r *subscriptionRepository) Update(ctx context.Context, subscription *entit
 	return nil
 }
 
-// Cancel cancels a subscription
+// Cancel cancels a subscription and resets the user's credit balance
 func (r *subscriptionRepository) Cancel(ctx context.Context, subscriptionID string) error {
-	now := time.Now()
-	err := r.db.WithContext(ctx).
-		Model(&model.Subscription{}).
-		Where("stripe_subscription_id = ?", subscriptionID).
-		Updates(map[string]interface{}{
-			"status":      model.SubscriptionStatusInactive,
-			"canceled_at": &now,
-		}).Error
+	// Use a database transaction to ensure atomicity
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// First, get the subscription to retrieve user information
+		var subscription model.Subscription
+		err := tx.Where("stripe_subscription_id = ?", subscriptionID).First(&subscription).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				r.logger.Error("Subscription not found for cancellation",
+					zap.String("subscription_id", subscriptionID))
+				return fmt.Errorf("subscription not found: %s", subscriptionID)
+			}
+			r.logger.Error("Failed to retrieve subscription for cancellation",
+				zap.String("subscription_id", subscriptionID),
+				zap.Error(err))
+			return fmt.Errorf("failed to retrieve subscription: %w", err)
+		}
 
-	if err != nil {
-		r.logger.Error("Failed to cancel subscription",
+		// Update subscription status
+		now := time.Now()
+		err = tx.Model(&model.Subscription{}).
+			Where("stripe_subscription_id = ?", subscriptionID).
+			Updates(map[string]interface{}{
+				"status":      model.SubscriptionStatusInactive,
+				"canceled_at": &now,
+			}).Error
+
+		if err != nil {
+			r.logger.Error("Failed to update subscription status",
+				zap.String("subscription_id", subscriptionID),
+				zap.Error(err))
+			return fmt.Errorf("failed to update subscription status: %w", err)
+		}
+
+		r.logger.Info("Subscription status updated to inactive",
 			zap.String("subscription_id", subscriptionID),
-			zap.Error(err))
-		return fmt.Errorf("failed to cancel subscription: %w", err)
-	}
+			zap.String("user_id", subscription.UserID.String()))
 
-	return nil
+		// Get current balance before resetting
+		var currentBalance model.UserCreditBalance
+		err = tx.Where("user_id = ?", subscription.UserID).First(&currentBalance).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			r.logger.Error("Failed to retrieve current balance",
+				zap.String("user_id", subscription.UserID.String()),
+				zap.Error(err))
+			return fmt.Errorf("failed to retrieve current balance: %w", err)
+		}
+
+		// Only proceed if there's a balance to reset
+		if err == nil && currentBalance.CurrentBalance.IsPositive() {
+			// Create a transaction record for the balance reset
+			balanceResetTransaction := &model.CreditTransaction{
+				UserID:          subscription.UserID,
+				SubscriptionID:  &subscription.ID,
+				TransactionType: model.TransactionTypeSubscriptionCancellation,
+				Amount:          currentBalance.CurrentBalance.Neg(), // Negative amount to zero out balance
+				BalanceAfter:    decimal.Zero,
+				Description:     fmt.Sprintf("Credit balance reset due to subscription cancellation (Subscription ID: %s)", subscriptionID),
+				CreatedAt:       now,
+			}
+
+			err = tx.Create(balanceResetTransaction).Error
+			if err != nil {
+				r.logger.Error("Failed to create balance reset transaction",
+					zap.String("user_id", subscription.UserID.String()),
+					zap.String("subscription_id", subscriptionID),
+					zap.Error(err))
+				return fmt.Errorf("failed to create balance reset transaction: %w", err)
+			}
+
+			r.logger.Info("Created balance reset transaction",
+				zap.String("user_id", subscription.UserID.String()),
+				zap.String("amount_reset", currentBalance.CurrentBalance.String()),
+				zap.Int64("transaction_id", balanceResetTransaction.ID))
+
+			// Update the user's credit balance to zero
+			err = tx.Model(&model.UserCreditBalance{}).
+				Where("user_id = ?", subscription.UserID).
+				Updates(map[string]interface{}{
+					"current_balance":     decimal.Zero,
+					"last_transaction_at": now,
+				}).Error
+
+			if err != nil {
+				r.logger.Error("Failed to reset user credit balance",
+					zap.String("user_id", subscription.UserID.String()),
+					zap.Error(err))
+				return fmt.Errorf("failed to reset user credit balance: %w", err)
+			}
+
+			r.logger.Info("User credit balance reset to zero",
+				zap.String("user_id", subscription.UserID.String()),
+				zap.String("previous_balance", currentBalance.CurrentBalance.String()))
+		} else {
+			r.logger.Info("No balance to reset for user",
+				zap.String("user_id", subscription.UserID.String()))
+		}
+
+		r.logger.Info("Subscription canceled successfully",
+			zap.String("subscription_id", subscriptionID),
+			zap.String("user_id", subscription.UserID.String()))
+
+		return nil
+	})
 }
 
 // ListByStatus lists subscriptions by status

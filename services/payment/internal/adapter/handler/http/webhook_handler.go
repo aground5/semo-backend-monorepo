@@ -375,12 +375,32 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
 		}
 
+		// Extract both customer ID and subscription ID
 		customerID, _ := rawData["customer"].(string)
+		subscriptionID, _ := rawData["id"].(string)
 
 		h.logger.Info("SUBSCRIPTION DELETED",
 			zap.String("customer_id", customerID),
+			zap.String("subscription_id", subscriptionID),
 		)
 
+		// Call Cancel function to properly handle database updates
+		if subscriptionID != "" && h.subscriptionRepo != nil {
+			ctx := c.Request().Context()
+			if err := h.subscriptionRepo.Cancel(ctx, subscriptionID); err != nil {
+				h.logger.Error("Failed to cancel subscription in database",
+					zap.String("subscription_id", subscriptionID),
+					zap.String("customer_id", customerID),
+					zap.Error(err))
+				// Note: We don't return error to Stripe to prevent webhook retries
+			} else {
+				h.logger.Info("Subscription successfully canceled in database",
+					zap.String("subscription_id", subscriptionID),
+					zap.String("customer_id", customerID))
+			}
+		}
+
+		// Update in-memory state for backward compatibility
 		if customerID != "" {
 			h.mu.Lock()
 			if sub, exists := h.subscriptions[customerID]; exists {
