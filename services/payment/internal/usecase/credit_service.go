@@ -3,10 +3,12 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/repository"
+	customErr "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/errors"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/model"
 	domainRepo "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
 	"go.uber.org/zap"
@@ -187,13 +189,32 @@ func (s *CreditService) GetBalance(ctx context.Context, userID uuid.UUID) (*mode
 }
 
 // UseCredits deducts credits for a specific feature
-func (s *CreditService) UseCredits(ctx context.Context, userID uuid.UUID, amount int, featureName string, description string) error {
-	decimalAmount := decimal.NewFromInt(int64(amount))
-
-	_, _, err := s.creditRepo.UseCredits(ctx, userID, decimalAmount, description, featureName)
+func (s *CreditService) UseCredits(ctx context.Context, userID uuid.UUID, amount decimal.Decimal, featureName string, description string, usageMetadata []byte, idempotencyKey *uuid.UUID) (*model.CreditTransaction, error) {
+	// For now, we'll use the existing UseCredits without idempotency key support
+	// TODO: Add idempotency key support to repository layer
+	
+	// First get the current balance to provide in error if insufficient
+	currentBalance, err := s.creditRepo.GetBalance(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("failed to use credits: %w", err)
+		return nil, fmt.Errorf("failed to get balance: %w", err)
 	}
 
-	return nil
+	balance, transaction, err := s.creditRepo.UseCredits(ctx, userID, amount, description, featureName)
+	if err != nil {
+		// Check if it's an insufficient balance error
+		if strings.Contains(err.Error(), "insufficient credit balance") {
+			return nil, customErr.NewInsufficientBalanceError(amount, currentBalance.CurrentBalance)
+		}
+		return nil, fmt.Errorf("failed to use credits: %w", err)
+	}
+
+	// Log the successful usage
+	s.logger.Info("Credits used successfully",
+		zap.String("user_id", userID.String()),
+		zap.String("amount", amount.String()),
+		zap.String("feature", featureName),
+		zap.String("balance_after", balance.CurrentBalance.String()),
+		zap.Int64("transaction_id", transaction.ID))
+
+	return transaction, nil
 }

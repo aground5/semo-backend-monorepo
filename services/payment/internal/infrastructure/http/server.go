@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/stripe/stripe-go/v76"
@@ -16,6 +17,19 @@ import (
 	"go.uber.org/zap"
 )
 
+// CustomValidator implements echo.Validator interface
+type CustomValidator struct {
+	validator *validator.Validate
+}
+
+// Validate validates the input struct
+func (cv *CustomValidator) Validate(i interface{}) error {
+	if err := cv.validator.Struct(i); err != nil {
+		return err
+	}
+	return nil
+}
+
 type Server struct {
 	config *config.Config
 	logger *zap.Logger
@@ -25,6 +39,9 @@ type Server struct {
 
 func NewServer(cfg *config.Config, logger *zap.Logger, repos *database.Repositories) *Server {
 	e := echo.New()
+
+	// Register custom validator
+	e.Validator = &CustomValidator{validator: validator.New()}
 
 	// Initialize Stripe
 	stripe.Key = cfg.Service.StripeSecretKey
@@ -123,6 +140,7 @@ func (s *Server) setupRoutes() {
 
 	// Credit routes (require authentication)
 	protected.GET("/credits", creditHandler.GetUserCredits)
+	protected.POST("/credits", creditHandler.UseCredits)
 	protected.GET("/credits/transactions", creditHandler.GetTransactionHistory)
 
 	// Internal/Debug routes
