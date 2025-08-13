@@ -147,12 +147,6 @@ func (s *Server) setupRoutes() {
 	internal := v1.Group("/internal")
 	internal.GET("/webhook-data", webhookHandler.GetWebhookData)
 
-	// Audit test endpoint (for development/testing only)
-	if s.config.Service.Environment != "production" {
-		auditTestHandler := handlers.NewAuditTestHandler(s.logger, s.repos.Payment)
-		internal.POST("/test-audit-log", auditTestHandler.TestAuditLog)
-	}
-
 	// Webhook route (outside API versioning)
 	s.echo.POST("/webhook", webhookHandler.HandleWebhook)
 }
