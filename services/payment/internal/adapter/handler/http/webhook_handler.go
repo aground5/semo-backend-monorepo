@@ -109,7 +109,6 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 	if h.webhookRepo != nil {
 		if err := h.webhookRepo.SaveEvent(c.Request().Context(), event.ID, string(event.Type), event.Data.Raw); err != nil {
 			h.logger.Error("Failed to save webhook event", zap.Error(err))
-			// Continue processing even if save fails
 		}
 	}
 
@@ -138,57 +137,64 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			}
 		}
 
-		if session.Mode == "subscription" && session.Customer != nil && session.Customer.ID != "" {
-			// Save customer mapping if we have user_id
-			if userID != "" && isValidUUID(userID) && h.customerMappingRepo != nil {
-				customerMapping := &entity.CustomerMapping{
-					StripeCustomerID: session.Customer.ID,
-					UserID:           userID,
-					Email:            session.CustomerEmail,
-				}
-
-				h.logger.Info("Creating customer mapping from checkout session",
+		if session.Mode == "subscription" && session.Customer != nil {
+			// 구독 모드일 때는 CustomerMapping 저장하지 않음
+			h.logger.Info("Subscription mode - skipping customer mapping (will be handled by subscription.created)",
+					zap.String("customer_id", session.Customer.ID))
+			
+			// 임시 구독 데이터만 저장 (기존 코드 유지)
+			h.mu.Lock()
+			h.subscriptions[session.Customer.ID] = &entity.Subscription{
+					CustomerID:    session.Customer.ID,
+					CustomerEmail: session.CustomerEmail,
+					Status:        "pending",
+					CreatedAt:     time.Now(),
+					UpdatedAt:     time.Now(),
+			}
+			h.mu.Unlock()
+			
+			h.logger.Info("Temporary subscription data saved",
 					zap.String("customer_id", session.Customer.ID),
-					zap.String("user_id", userID),
-					zap.String("email", session.CustomerEmail))
+					zap.String("email", session.CustomerEmail),
+			)
+			
+		} else if session.Mode == "payment" && session.Customer != nil {
+			// 일회성 결제일 때만 여기서 CustomerMapping 저장
+			if userID != "" && isValidUUID(userID) && h.customerMappingRepo != nil {
+					customerMapping := &entity.CustomerMapping{
+							StripeCustomerID: session.Customer.ID,
+							UserID:           userID,
+							Email:            session.CustomerEmail,
+					}
 
-				// Check if mapping already exists
-				existing, _ := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), session.Customer.ID)
-				if existing == nil {
-					if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
-						h.logger.Error("Failed to save customer mapping",
-							zap.String("customer_id", session.Customer.ID),
-							zap.String("user_id", userID),
-							zap.String("email", session.CustomerEmail),
-							zap.Error(err))
-					} else {
-						h.logger.Info("Customer mapping saved successfully",
+					h.logger.Info("Creating customer mapping from one-time payment",
 							zap.String("customer_id", session.Customer.ID),
 							zap.String("user_id", userID),
 							zap.String("email", session.CustomerEmail))
+
+					// Check if mapping already exists
+					existing, _ := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), session.Customer.ID)
+					if existing == nil {
+							if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
+									h.logger.Error("Failed to save customer mapping",
+											zap.String("customer_id", session.Customer.ID),
+											zap.String("user_id", userID),
+											zap.String("email", session.CustomerEmail),
+											zap.Error(err))
+							} else {
+									h.logger.Info("Customer mapping saved successfully",
+											zap.String("customer_id", session.Customer.ID),
+											zap.String("user_id", userID),
+											zap.String("email", session.CustomerEmail))
+							}
+					} else {
+							h.logger.Info("Customer mapping already exists",
+									zap.String("customer_id", session.Customer.ID),
+									zap.String("existing_email", existing.Email))
 					}
-				} else {
-					h.logger.Info("Customer mapping already exists",
-						zap.String("customer_id", session.Customer.ID),
-						zap.String("existing_email", existing.Email))
-				}
 			}
-
-			h.mu.Lock()
-			h.subscriptions[session.Customer.ID] = &entity.Subscription{
-				CustomerID:    session.Customer.ID,
-				CustomerEmail: session.CustomerEmail,
-				Status:        "pending",
-				CreatedAt:     time.Now(),
-				UpdatedAt:     time.Now(),
-			}
-			h.mu.Unlock()
-
-			h.logger.Info("Temporary subscription data saved",
-				zap.String("customer_id", session.Customer.ID),
-				zap.String("email", session.CustomerEmail),
-			)
 		}
+
 
 	case stripe.EventTypeCustomerSubscriptionCreated, stripe.EventTypeCustomerSubscriptionUpdated:
 		var rawData map[string]interface{}
@@ -410,7 +416,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			h.mu.Unlock()
 		}
 
-	case stripe.EventTypeInvoicePaymentSucceeded:
+	case stripe.EventTypeInvoicePaid:
 		var invoice stripe.Invoice
 		if err := json.Unmarshal(event.Data.Raw, &invoice); err != nil {
 			h.logger.Error("Error parsing invoice", zap.Error(err))
