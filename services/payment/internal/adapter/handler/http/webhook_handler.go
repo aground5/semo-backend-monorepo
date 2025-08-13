@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/stripe/stripe-go/v76"
-	"github.com/stripe/stripe-go/v76/webhook"
+	"github.com/stripe/stripe-go/v79"
+	"github.com/stripe/stripe-go/v79/webhook"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
 	domainRepo "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"

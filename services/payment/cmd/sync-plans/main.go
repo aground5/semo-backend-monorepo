@@ -4,9 +4,9 @@ import (
 	"context"
 	"log"
 
-	"github.com/stripe/stripe-go/v76"
-	"github.com/stripe/stripe-go/v76/price"
-	"github.com/stripe/stripe-go/v76/product"
+	"github.com/stripe/stripe-go/v79"
+	"github.com/stripe/stripe-go/v79/price"
+	"github.com/stripe/stripe-go/v79/product"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/config"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/database"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/usecase"
