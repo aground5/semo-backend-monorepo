@@ -93,7 +93,7 @@ func (s *Server) setupRoutes() {
 	// Initialize handlers
 	plansHandler := handlers.NewPlansHandler(s.logger, s.repos.Plan)
 	checkoutHandler := handlers.NewCheckoutHandler(s.logger, s.config.Service.ClientURL, s.repos.CustomerMapping)
-	subscriptionHandler := handlers.NewSubscriptionHandler(s.logger, subscriptionService)
+	subscriptionHandler := handlers.NewSubscriptionHandler(s.logger, subscriptionService, s.repos.CustomerMapping, s.config.Service.ClientURL)
 	webhookHandler := handlers.NewWebhookHandler(s.logger, s.config.Service.StripeWebhookSecret, s.repos.Webhook, s.repos.Subscription, s.repos.Payment, s.repos.CustomerMapping, s.repos.Credit, s.repos.Plan)
 	paymentUsecase := usecase.NewPaymentUsecase(s.repos.Payment, nil, s.logger)
 	paymentHandler := handlers.NewPaymentHandler(paymentUsecase, s.logger)
@@ -125,7 +125,7 @@ func (s *Server) setupRoutes() {
 
 	// Subscriptions - RESTful style (all require authentication)
 	subscriptions := protected.Group("/subscriptions")
-	subscriptions.POST("", checkoutHandler.CreateSubscription)
+	subscriptions.POST("", subscriptionHandler.CreateSubscription)
 	subscriptions.GET("/current", subscriptionHandler.GetCurrentSubscription)
 	subscriptions.DELETE("/current", subscriptionHandler.CancelCurrentSubscription) // New secure endpoint
 	subscriptions.POST("/portal", checkoutHandler.CreatePortalSession)
