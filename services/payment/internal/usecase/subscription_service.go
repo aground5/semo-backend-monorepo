@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/stripe/stripe-go/v76"
-	"github.com/stripe/stripe-go/v76/product"
-	"github.com/stripe/stripe-go/v76/subscription"
+	"github.com/stripe/stripe-go/v79"
+	"github.com/stripe/stripe-go/v79/product"
+	"github.com/stripe/stripe-go/v79/subscription"
 	domainErrors "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/errors"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
 	"go.uber.org/zap"

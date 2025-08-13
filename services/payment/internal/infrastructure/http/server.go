@@ -8,7 +8,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/stripe/stripe-go/v76"
+	"github.com/stripe/stripe-go/v79"
 	handlers "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/handler/http"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/config"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/database"

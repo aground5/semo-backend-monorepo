@@ -5,9 +5,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/stripe/stripe-go/v76"
-	portalsession "github.com/stripe/stripe-go/v76/billingportal/session"
-	checkoutsession "github.com/stripe/stripe-go/v76/checkout/session"
+	"github.com/stripe/stripe-go/v79"
+	portalsession "github.com/stripe/stripe-go/v79/billingportal/session"
+	checkoutsession "github.com/stripe/stripe-go/v79/checkout/session"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/middleware/auth"
 	"go.uber.org/zap"

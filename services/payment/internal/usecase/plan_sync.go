@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/stripe/stripe-go/v76"
-	"github.com/stripe/stripe-go/v76/price"
-	"github.com/stripe/stripe-go/v76/product"
+	"github.com/stripe/stripe-go/v79"
+	"github.com/stripe/stripe-go/v79/price"
+	"github.com/stripe/stripe-go/v79/product"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/model"
 	"go.uber.org/zap"
