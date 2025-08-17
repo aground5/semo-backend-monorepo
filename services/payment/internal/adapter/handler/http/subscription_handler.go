@@ -8,7 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stripe/stripe-go/v79"
-	checkoutsession "github.com/stripe/stripe-go/v79/checkout/session"
+	"github.com/stripe/stripe-go/v79/customer"
+	"github.com/stripe/stripe-go/v79/subscription"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
 	domainErrors "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/errors"
 	domainRepo "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
@@ -155,16 +156,15 @@ func (h *SubscriptionHandler) CreateSubscription(c echo.Context) error {
 		})
 	}
 
-	h.logger.Info("Creating subscription...",
+	h.logger.Info("Creating subscription with Payment Element...",
 		zap.String("price_id", req.PriceID),
 		zap.String("email", req.Email),
 		zap.String("user_id", user.UserID),
 		zap.String("jwt_email", user.Email),
-		zap.String("mode", req.Mode),
 	)
 
 	// Check if we already have a Stripe customer for this user
-	var existingCustomerID string
+	var customerID string
 	if h.customerMappingRepo != nil {
 		existingMapping, err := h.customerMappingRepo.GetByUserID(c.Request().Context(), user.UserID)
 		if err != nil {
@@ -172,69 +172,126 @@ func (h *SubscriptionHandler) CreateSubscription(c echo.Context) error {
 				zap.String("user_id", user.UserID),
 				zap.Error(err))
 		} else if existingMapping != nil {
-			existingCustomerID = existingMapping.StripeCustomerID
+			customerID = existingMapping.StripeCustomerID
 			h.logger.Info("Found existing Stripe customer",
-				zap.String("customer_id", existingCustomerID),
+				zap.String("customer_id", customerID),
 				zap.String("user_id", user.UserID))
 		}
 	}
 
-	// 기본 파라미터 설정
-	params := &stripe.CheckoutSessionParams{
-		PaymentMethodTypes: stripe.StringSlice([]string{"card"}),
-		LineItems: []*stripe.CheckoutSessionLineItemParams{
-			{
-				Price:    stripe.String(req.PriceID),
-				Quantity: stripe.Int64(1),
-			},
-		},
-		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),
-		// Set metadata on subscription
-		SubscriptionData: &stripe.CheckoutSessionSubscriptionDataParams{
+	// Create or retrieve customer
+	if customerID == "" {
+		// Create new customer
+		customerParams := &stripe.CustomerParams{
+			Email: stripe.String(req.Email),
 			Metadata: map[string]string{
 				"user_id": user.UserID,
 			},
+		}
+		customer, err := customer.New(customerParams)
+		if err != nil {
+			h.logger.Error("Error creating customer", zap.Error(err))
+			return c.JSON(http.StatusInternalServerError, echo.Map{
+				"error": "Failed to create customer",
+			})
+		}
+		customerID = customer.ID
+		h.logger.Info("Created new Stripe customer",
+			zap.String("customer_id", customerID),
+			zap.String("email", req.Email))
+
+		// Save customer mapping if repository is available
+		if h.customerMappingRepo != nil {
+			// Parse user ID to UUID
+			parsedUserID, err := uuid.Parse(user.UserID)
+			if err != nil {
+				h.logger.Error("Failed to parse user ID",
+					zap.String("user_id", user.UserID),
+					zap.Error(err))
+				return c.JSON(http.StatusInternalServerError, echo.Map{
+					"error": "Invalid user ID format",
+				})
+			}
+
+			mapping := &entity.CustomerMapping{
+				UserID:           parsedUserID.String(),
+				StripeCustomerID: customerID,
+			}
+			if err := h.customerMappingRepo.Create(c.Request().Context(), mapping); err != nil {
+				h.logger.Warn("Failed to save customer mapping",
+					zap.String("user_id", user.UserID),
+					zap.String("customer_id", customerID),
+					zap.Error(err))
+			}
+		}
+	}
+
+	// Create subscription with payment_behavior set to default_incomplete
+	// This creates the subscription in an incomplete state and returns a payment intent
+	subscriptionParams := &stripe.SubscriptionParams{
+		Customer: stripe.String(customerID),
+		Items: []*stripe.SubscriptionItemsParams{
+			{
+				Price: stripe.String(req.PriceID),
+			},
 		},
-		// Session metadata
+		PaymentBehavior: stripe.String("default_incomplete"),
+		PaymentSettings: &stripe.SubscriptionPaymentSettingsParams{
+			SaveDefaultPaymentMethod: stripe.String("on_subscription"),
+			PaymentMethodTypes:       stripe.StringSlice([]string{"card"}),
+		},
+		Expand: stripe.StringSlice([]string{
+			"latest_invoice.payment_intent",
+			"pending_setup_intent",
+		}),
 		Metadata: map[string]string{
 			"user_id": user.UserID,
 		},
 	}
 
-	// Embedded Checkout 설정
-	params.UIMode = stripe.String("embedded")
-	params.ReturnURL = stripe.String(h.clientURL + "/?payment_complete=true&session_id={CHECKOUT_SESSION_ID}")
-	h.logger.Info("Using embedded checkout mode")
-
-	// Use existing customer or create new one
-	if existingCustomerID != "" {
-		params.Customer = stripe.String(existingCustomerID)
-		h.logger.Info("Using existing customer for checkout session",
-			zap.String("customer_id", existingCustomerID))
-	} else {
-		params.CustomerEmail = stripe.String(req.Email)
-		h.logger.Info("Creating new customer with email",
-			zap.String("email", req.Email))
-	}
-
-	s, err := checkoutsession.New(params)
+	// Create the subscription
+	sub, err := subscription.New(subscriptionParams)
 	if err != nil {
 		h.logger.Error("Error creating subscription", zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, echo.Map{
-			"error": err.Error(),
+			"error": "Failed to create subscription",
 		})
 	}
 
-	// Mode에 따라 다른 응답 반환
-	h.logger.Info("Checkout session created for embedded mode",
-		zap.String("session_id", s.ID),
-		zap.Bool("has_client_secret", s.ClientSecret != ""))
+	var clientSecret string
+	var intentType string
 
-	return c.JSON(http.StatusCreated, CreateCheckoutResponse{
-		ID:           s.ID,
-		ClientSecret: s.ClientSecret,
-		Status:       "pending",
-		SessionID:    s.ID,
+	// Get the client secret from either payment intent or setup intent
+	if sub.PendingSetupIntent != nil && sub.PendingSetupIntent.ClientSecret != "" {
+		clientSecret = sub.PendingSetupIntent.ClientSecret
+		intentType = "setup_intent"
+		h.logger.Info("Using setup intent for subscription",
+			zap.String("setup_intent_id", sub.PendingSetupIntent.ID))
+	} else if sub.LatestInvoice != nil && sub.LatestInvoice.PaymentIntent != nil {
+		clientSecret = sub.LatestInvoice.PaymentIntent.ClientSecret
+		intentType = "payment_intent"
+		h.logger.Info("Using payment intent for subscription",
+			zap.String("payment_intent_id", sub.LatestInvoice.PaymentIntent.ID))
+	} else {
+		h.logger.Error("No payment intent or setup intent found in subscription")
+		return c.JSON(http.StatusInternalServerError, echo.Map{
+			"error": "Failed to get payment intent",
+		})
+	}
+
+	h.logger.Info("Subscription created successfully",
+		zap.String("subscription_id", sub.ID),
+		zap.String("customer_id", customerID),
+		zap.String("intent_type", intentType),
+		zap.String("status", string(sub.Status)))
+
+	// Return the response with client secret for Payment Element
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"subscriptionId": sub.ID,
+		"clientSecret":   clientSecret,
+		"intentType":     intentType,
+		"status":         string(sub.Status),
+		"customerId":     customerID,
 	})
 }
 
