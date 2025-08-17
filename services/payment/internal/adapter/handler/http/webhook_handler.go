@@ -113,88 +113,98 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 	}
 
 	switch event.Type {
-	case stripe.EventTypeCheckoutSessionCompleted:
-		var session stripe.CheckoutSession
-		if err := json.Unmarshal(event.Data.Raw, &session); err != nil {
-			h.logger.Error("Error parsing checkout session", zap.Error(err))
-			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
-		}
+	case stripe.EventTypeSetupIntentSucceeded:
+    var setupIntent stripe.SetupIntent
+    if err := json.Unmarshal(event.Data.Raw, &setupIntent); err != nil {
+        h.logger.Error("Error parsing setup intent", zap.Error(err))
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
+    }
 
-		h.logger.Info("CHECKOUT SESSION COMPLETED",
-			zap.String("session_id", session.ID),
-			zap.String("customer_email", session.CustomerEmail),
-			zap.String("payment_status", string(session.PaymentStatus)),
-		)
+    h.logger.Info("SETUP INTENT SUCCEEDED",
+        zap.String("setup_intent_id", setupIntent.ID),
+        zap.String("payment_method", setupIntent.PaymentMethod.ID),
+    )
 
-		// Extract user_id from session metadata
-		var userID string
-		if session.Metadata != nil {
-			if uid, ok := session.Metadata["user_id"]; ok {
-				userID = uid
-				h.logger.Info("Found user_id in session metadata",
-					zap.String("user_id", userID),
-					zap.String("session_id", session.ID))
-			}
-		}
+    // Customer가 없으면 처리하지 않음
+    if setupIntent.Customer == nil || setupIntent.Customer.ID == "" {
+        h.logger.Info("No customer associated with setup intent")
+        return c.JSON(http.StatusOK, echo.Map{"received": true})
+    }
 
-		if session.Mode == "subscription" && session.Customer != nil {
-			// 구독 모드일 때는 CustomerMapping 저장하지 않음
-			h.logger.Info("Subscription mode - skipping customer mapping (will be handled by subscription.created)",
-					zap.String("customer_id", session.Customer.ID))
-			
-			// 임시 구독 데이터만 저장 (기존 코드 유지)
-			h.mu.Lock()
-			h.subscriptions[session.Customer.ID] = &entity.Subscription{
-					CustomerID:    session.Customer.ID,
-					CustomerEmail: session.CustomerEmail,
-					Status:        "pending",
-					CreatedAt:     time.Now(),
-					UpdatedAt:     time.Now(),
-			}
-			h.mu.Unlock()
-			
-			h.logger.Info("Temporary subscription data saved",
-					zap.String("customer_id", session.Customer.ID),
-					zap.String("email", session.CustomerEmail),
-			)
-			
-		} else if session.Mode == "payment" && session.Customer != nil {
-			// 일회성 결제일 때만 여기서 CustomerMapping 저장
-			if userID != "" && isValidUUID(userID) && h.customerMappingRepo != nil {
-					customerMapping := &entity.CustomerMapping{
-							StripeCustomerID: session.Customer.ID,
-							UserID:           userID,
-							Email:            session.CustomerEmail,
-					}
+    // Extract user_id, email, and payment mode from metadata
+    var userID string
+    var userEmail string
+    var paymentMode string // "subscription" or "payment"
+    
+    if setupIntent.Metadata != nil {
+        if uid, ok := setupIntent.Metadata["user_id"]; ok {
+            userID = uid
+            h.logger.Info("Found user_id in setup intent metadata",
+                zap.String("user_id", userID),
+                zap.String("setup_intent_id", setupIntent.ID))
+        }
+        
+        // metadata에서 email 정보 추출 (프론트엔드에서 설정 필요)
+        if email, ok := setupIntent.Metadata["email"]; ok {
+            userEmail = email
+        }
+        
+        // metadata에서 mode 정보 추출
+        if mode, ok := setupIntent.Metadata["mode"]; ok {
+            paymentMode = mode
+        }
+    }
 
-					h.logger.Info("Creating customer mapping from one-time payment",
-							zap.String("customer_id", session.Customer.ID),
-							zap.String("user_id", userID),
-							zap.String("email", session.CustomerEmail))
+    customerID := setupIntent.Customer.ID
 
-					// Check if mapping already exists
-					existing, _ := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), session.Customer.ID)
-					if existing == nil {
-							if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
-									h.logger.Error("Failed to save customer mapping",
-											zap.String("customer_id", session.Customer.ID),
-											zap.String("user_id", userID),
-											zap.String("email", session.CustomerEmail),
-											zap.Error(err))
-							} else {
-									h.logger.Info("Customer mapping saved successfully",
-											zap.String("customer_id", session.Customer.ID),
-											zap.String("user_id", userID),
-											zap.String("email", session.CustomerEmail))
-							}
-					} else {
-							h.logger.Info("Customer mapping already exists",
-									zap.String("customer_id", session.Customer.ID),
-									zap.String("existing_email", existing.Email))
-					}
-			}
-		}
+    h.logger.Info("Setup intent details",
+        zap.String("customer_id", customerID),
+        zap.String("email", userEmail),
+        zap.String("mode", paymentMode),
+    )
 
+			if paymentMode == "payment" {
+        // 일회성 결제일 때만 여기서 CustomerMapping 저장
+        if userID != "" && isValidUUID(userID) && h.customerMappingRepo != nil {
+            customerMapping := &entity.CustomerMapping{
+                StripeCustomerID: customerID,
+                UserID:           userID,
+                Email:            userEmail,
+            }
+
+            h.logger.Info("Creating customer mapping from one-time payment",
+                zap.String("customer_id", customerID),
+                zap.String("user_id", userID),
+                zap.String("email", userEmail))
+
+            // Check if mapping already exists
+            existing, _ := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), customerID)
+            if existing == nil {
+                if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
+                    h.logger.Error("Failed to save customer mapping",
+                        zap.String("customer_id", customerID),
+                        zap.String("user_id", userID),
+                        zap.String("email", userEmail),
+                        zap.Error(err))
+                } else {
+                    h.logger.Info("Customer mapping saved successfully",
+                        zap.String("customer_id", customerID),
+                        zap.String("user_id", userID),
+                        zap.String("email", userEmail))
+                }
+            } else {
+                h.logger.Info("Customer mapping already exists",
+                    zap.String("customer_id", customerID),
+                    zap.String("existing_email", existing.Email))
+            }
+        }
+    } else {
+        h.logger.Warn("Unknown payment mode or mode not specified",
+            zap.String("mode", paymentMode),
+            zap.String("customer_id", customerID))
+    }
+
+    return c.JSON(http.StatusOK, echo.Map{"received": true})
 
 	case stripe.EventTypeCustomerSubscriptionCreated, stripe.EventTypeCustomerSubscriptionUpdated:
 		var rawData map[string]interface{}
@@ -345,13 +355,20 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 				ctx := c.Request().Context()
 				var err error
 
-				// Check if subscription exists
-				existing, _ := h.subscriptionRepo.GetByID(ctx, subscriptionID)
+				// 더 엄격한 중복 체크
+				existing, err := h.subscriptionRepo.GetByID(ctx, subscriptionID)
+				if err != nil {
+					h.logger.Error("Failed to check existing subscription", zap.Error(err))
+					return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Database error"})
+				}
+
 				if existing != nil {
-					// Update existing subscription
+					h.logger.Info("Subscription already exists, updating...", 
+						zap.String("subscription_id", subscriptionID))
 					err = h.subscriptionRepo.Update(ctx, subscription)
 				} else {
-					// Create new subscription
+					h.logger.Info("Creating new subscription", 
+						zap.String("subscription_id", subscriptionID))
 					err = h.subscriptionRepo.Save(ctx, subscription)
 				}
 
