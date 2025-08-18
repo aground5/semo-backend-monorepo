@@ -14,6 +14,7 @@ type Subscription struct {
 	Currency          string    `json:"currency"`
 	Interval          string    `json:"interval"`
 	IntervalCount     int64     `json:"interval_count"`
+	PlanID            *string    `json:"plan_id,omitempty"`  // 추가
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
