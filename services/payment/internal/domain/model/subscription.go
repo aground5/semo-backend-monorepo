@@ -40,7 +40,7 @@ type Subscription struct {
 	UserID                 uuid.UUID          `gorm:"type:uuid;not null" json:"user_id"`
 	StripeCustomerID       string             `gorm:"not null;size:100" json:"stripe_customer_id"`
 	StripeSubscriptionID   *string            `gorm:"unique;size:100" json:"stripe_subscription_id,omitempty"`
-	PlanID                 *int64             `gorm:"index" json:"plan_id,omitempty"`
+	PlanID                 *string            `gorm:"not null;size:100" json:"plan_id,omitempty"`
 	Status                 SubscriptionStatus `gorm:"type:subscription_status;not null;default:'active'" json:"status"`
 	CurrentPeriodStart     time.Time          `gorm:"not null" json:"current_period_start"`
 	CurrentPeriodEnd       time.Time          `gorm:"not null" json:"current_period_end"`
@@ -55,7 +55,7 @@ type Subscription struct {
 	UpdatedAt              time.Time          `gorm:"default:now()" json:"updated_at"`
 
 	// Relations
-	Plan *SubscriptionPlan `gorm:"foreignKey:PlanID" json:"plan,omitempty"`
+	Plan *SubscriptionPlan `gorm:"foreignKey:PlanID;references:StripeProductID" json:"plan,omitempty"`
 }
 
 // JSONB represents a JSONB database type

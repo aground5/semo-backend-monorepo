@@ -335,15 +335,16 @@ func (r *subscriptionRepository) entityToModel(ctx context.Context, e *entity.Su
 		UserID:               userID,
 		StripeCustomerID:     e.CustomerID,
 		StripeSubscriptionID: &e.ID,
+		PlanID:               e.PlanID,  // PlanID 매핑 추가
 		Status:               r.mapEntityStatus(e.Status),
-		CurrentPeriodStart:   e.CreatedAt, // Approximate
+		CurrentPeriodStart:   e.CreatedAt,
 		CurrentPeriodEnd:     e.CurrentPeriodEnd,
 		ProductName:          e.ProductName,
 		Amount:               e.Amount,
 		Currency:             e.Currency,
 		Interval:             e.Interval,
 		IntervalCount:        e.IntervalCount,
-	}
+}
 
 	if e.CancelAtPeriodEnd {
 		now := time.Now()

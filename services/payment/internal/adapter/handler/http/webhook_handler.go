@@ -213,6 +213,15 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
 		}
 
+		h.logger.Info("Complete webhook data structure",
+			zap.String("event_type", string(event.Type)),
+			zap.Any("raw_data", rawData),
+			zap.Any("items", rawData["items"]),
+			zap.Any("metadata", rawData["metadata"]),
+			zap.Any("customer", rawData["customer"]),
+			zap.Any("status", rawData["status"]),
+			zap.Any("current_period_end", rawData["current_period_end"]))
+
 		subscriptionID, _ := rawData["id"].(string)
 		status, _ := rawData["status"].(string)
 		customerID, _ := rawData["customer"].(string)
@@ -220,6 +229,21 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 		currentPeriodEnd := int64(0)
 		if cpe, ok := rawData["current_period_end"].(float64); ok {
 			currentPeriodEnd = int64(cpe)
+		}
+
+		var productID string
+		if items, ok := rawData["items"].(map[string]interface{}); ok {
+				if data, ok := items["data"].([]interface{}); ok && len(data) > 0 {
+						if item, ok := data[0].(map[string]interface{}); ok {
+								if price, ok := item["price"].(map[string]interface{}); ok {
+										if product, ok := price["product"].(string); ok {
+												productID = product
+												h.logger.Info("Extracted product ID for plan_id",
+														zap.String("product_id", productID))
+										}
+								}
+						}
+				}
 		}
 
 		h.logger.Info("SUBSCRIPTION CREATED/UPDATED",
@@ -275,16 +299,16 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 					zap.String("raw_customer_type", fmt.Sprintf("%T", rawData["customer"])))
 			}
 
-			// Create subscription entity
 			subscription := &entity.Subscription{
-				ID:               subscriptionID,
-				CustomerID:       customerID,
-				CustomerEmail:    customerEmail, // Now populated from customer data
-				Status:           status,
-				CurrentPeriodEnd: time.Unix(currentPeriodEnd, 0),
-				CreatedAt:        time.Now(),
-				UpdatedAt:        time.Now(),
-			}
+        ID:               subscriptionID,
+        CustomerID:       customerID,
+        CustomerEmail:    customerEmail,
+        Status:           status,
+        CurrentPeriodEnd: time.Unix(currentPeriodEnd, 0),
+        PlanID:           &productID,
+        CreatedAt:        time.Now(),
+        UpdatedAt:        time.Now(),
+    }
 
 			// If we have a valid user ID, save customer mapping
 			if userID != "" && isValidUUID(userID) && h.customerMappingRepo != nil {
@@ -314,7 +338,6 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 							zap.String("email", customerEmail))
 					}
 				} else if existing != nil && existing.Email == "" && customerEmail != "" {
-					// Update existing mapping with email if it was missing
 					existing.Email = customerEmail
 					if err := h.customerMappingRepo.Update(c.Request().Context(), existing); err != nil {
 						h.logger.Error("Failed to update customer mapping with email",
