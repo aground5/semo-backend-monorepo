@@ -82,10 +82,16 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 		customerID = activeSub.Customer.ID
 	}
 
-	var items []entity.SubscriptionItem
-	for _, item := range activeSub.Items.Data {
-		var productName string
-		// Try to get product name from different sources
+	// Extract subscription product information
+	// Since we now support only one subscription per customer, we take the first item
+	var productName string
+	var amount int64
+	var currency string
+	var interval string
+	var intervalCount int64
+
+	if len(activeSub.Items.Data) > 0 {
+		item := activeSub.Items.Data[0]
 		if item.Price != nil {
 			// First try: Price nickname (often contains the product name)
 			if item.Price.Nickname != "" {
@@ -97,22 +103,15 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 				// Fallback: Use a generic name
 				productName = "Subscription"
 			}
-		}
 
-		var interval string
-		var intervalCount int64
-		if item.Price != nil && item.Price.Recurring != nil {
-			interval = string(item.Price.Recurring.Interval)
-			intervalCount = item.Price.Recurring.IntervalCount
-		}
+			amount = item.Price.UnitAmount
+			currency = string(item.Price.Currency)
 
-		items = append(items, entity.SubscriptionItem{
-			ProductName:   productName,
-			Amount:        item.Price.UnitAmount,
-			Currency:      string(item.Price.Currency),
-			Interval:      interval,
-			IntervalCount: intervalCount,
-		})
+			if item.Price.Recurring != nil {
+				interval = string(item.Price.Recurring.Interval)
+				intervalCount = item.Price.Recurring.IntervalCount
+			}
+		}
 	}
 
 	h.logger.Info("Active subscription found",
@@ -127,7 +126,11 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 		Status:            string(activeSub.Status),
 		CurrentPeriodEnd:  time.Unix(activeSub.CurrentPeriodEnd, 0),
 		CancelAtPeriodEnd: activeSub.CancelAtPeriodEnd,
-		Items:             items,
+		ProductName:       productName,
+		Amount:            amount,
+		Currency:          currency,
+		Interval:          interval,
+		IntervalCount:     intervalCount,
 	})
 }
 
@@ -345,10 +348,15 @@ func (h *SubscriptionHandler) CancelCurrentSubscription(c echo.Context) error {
 	)
 
 	// Build response with subscription details
-	var items []entity.SubscriptionItem
-	for _, item := range updatedSub.Items.Data {
-		var productName string
-		// Try to get product name from different sources
+	// Extract subscription product information - take the first item
+	var productName string
+	var amount int64
+	var currency string
+	var interval string
+	var intervalCount int64
+
+	if len(updatedSub.Items.Data) > 0 {
+		item := updatedSub.Items.Data[0]
 		if item.Price != nil {
 			// First try: Price nickname (often contains the product name)
 			if item.Price.Nickname != "" {
@@ -360,22 +368,15 @@ func (h *SubscriptionHandler) CancelCurrentSubscription(c echo.Context) error {
 				// Fallback: Use a generic name
 				productName = "Subscription"
 			}
-		}
 
-		var interval string
-		var intervalCount int64
-		if item.Price != nil && item.Price.Recurring != nil {
-			interval = string(item.Price.Recurring.Interval)
-			intervalCount = item.Price.Recurring.IntervalCount
-		}
+			amount = item.Price.UnitAmount
+			currency = string(item.Price.Currency)
 
-		items = append(items, entity.SubscriptionItem{
-			ProductName:   productName,
-			Amount:        item.Price.UnitAmount,
-			Currency:      string(item.Price.Currency),
-			Interval:      interval,
-			IntervalCount: intervalCount,
-		})
+			if item.Price.Recurring != nil {
+				interval = string(item.Price.Recurring.Interval)
+				intervalCount = item.Price.Recurring.IntervalCount
+			}
+		}
 	}
 
 	customerID := ""
@@ -390,7 +391,11 @@ func (h *SubscriptionHandler) CancelCurrentSubscription(c echo.Context) error {
 			Status:            string(updatedSub.Status),
 			CurrentPeriodEnd:  time.Unix(updatedSub.CurrentPeriodEnd, 0),
 			CancelAtPeriodEnd: updatedSub.CancelAtPeriodEnd,
-			Items:             items,
+			ProductName:       productName,
+			Amount:            amount,
+			Currency:          currency,
+			Interval:          interval,
+			IntervalCount:     intervalCount,
 		},
 		"message": "Subscription will be canceled at the end of the current billing period",
 		"cancel_at": time.Unix(updatedSub.CurrentPeriodEnd, 0).Format(time.RFC3339),

@@ -282,18 +282,20 @@ func (r *subscriptionRepository) modelToEntity(m *model.Subscription) *entity.Su
 		CancelAtPeriodEnd: m.CanceledAt != nil,
 		CreatedAt:         m.CreatedAt,
 		UpdatedAt:         m.UpdatedAt,
-		Items:             []entity.SubscriptionItem{},
+		ProductName:       m.ProductName,
+		Amount:            m.Amount,
+		Currency:          m.Currency,
+		Interval:          m.Interval,
+		IntervalCount:     m.IntervalCount,
 	}
 
-	// Add subscription items from plan
-	if m.Plan != nil {
-		e.Items = append(e.Items, entity.SubscriptionItem{
-			ProductName:   m.Plan.DisplayName,
-			Amount:        int64(m.Plan.CreditsPerCycle),
-			Currency:      "KRW",
-			Interval:      "month",
-			IntervalCount: 1,
-		})
+	// If subscription item fields are empty, try to populate from plan (for backward compatibility)
+	if e.ProductName == "" && m.Plan != nil {
+		e.ProductName = m.Plan.DisplayName
+		e.Amount = int64(m.Plan.CreditsPerCycle)
+		e.Currency = "KRW"
+		e.Interval = "month"
+		e.IntervalCount = 1
 	}
 
 	return e
@@ -336,6 +338,11 @@ func (r *subscriptionRepository) entityToModel(ctx context.Context, e *entity.Su
 		Status:               r.mapEntityStatus(e.Status),
 		CurrentPeriodStart:   e.CreatedAt, // Approximate
 		CurrentPeriodEnd:     e.CurrentPeriodEnd,
+		ProductName:          e.ProductName,
+		Amount:               e.Amount,
+		Currency:             e.Currency,
+		Interval:             e.Interval,
+		IntervalCount:        e.IntervalCount,
 	}
 
 	if e.CancelAtPeriodEnd {
