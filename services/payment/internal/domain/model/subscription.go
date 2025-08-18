@@ -45,6 +45,11 @@ type Subscription struct {
 	CurrentPeriodStart     time.Time          `gorm:"not null" json:"current_period_start"`
 	CurrentPeriodEnd       time.Time          `gorm:"not null" json:"current_period_end"`
 	CanceledAt             *time.Time         `json:"canceled_at,omitempty"`
+	ProductName            string             `gorm:"size:255" json:"product_name"`
+	Amount                 int64              `json:"amount"`
+	Currency               string             `gorm:"size:3" json:"currency"`
+	Interval               string             `gorm:"size:20" json:"interval"`
+	IntervalCount          int64              `json:"interval_count"`
 	StripeSubscriptionData JSONB              `gorm:"type:jsonb" json:"stripe_subscription_data,omitempty"`
 	CreatedAt              time.Time          `gorm:"default:now()" json:"created_at"`
 	UpdatedAt              time.Time          `gorm:"default:now()" json:"updated_at"`

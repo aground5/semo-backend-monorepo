@@ -329,20 +329,35 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 				}
 			}
 
-			// Extract additional data
+			// Extract subscription item data and map directly to subscription fields
 			if items, ok := rawData["items"].(map[string]interface{}); ok {
 				if data, ok := items["data"].([]interface{}); ok && len(data) > 0 {
 					if item, ok := data[0].(map[string]interface{}); ok {
 						if price, ok := item["price"].(map[string]interface{}); ok {
+							// Extract product name
 							if product, ok := price["product"].(string); ok {
-								subscription.Items = []entity.SubscriptionItem{
-									{
-										ProductName:   product,
-										Amount:        0, // Would need to extract from price
-										Currency:      "KRW",
-										Interval:      "month",
-										IntervalCount: 1,
-									},
+								subscription.ProductName = product
+							}
+							
+							// Extract amount
+							if unitAmount, ok := price["unit_amount"].(float64); ok {
+								subscription.Amount = int64(unitAmount)
+							}
+							
+							// Extract currency
+							if currency, ok := price["currency"].(string); ok {
+								subscription.Currency = currency
+							} else {
+								subscription.Currency = "KRW" // Default
+							}
+							
+							// Extract recurring interval information
+							if recurring, ok := price["recurring"].(map[string]interface{}); ok {
+								if interval, ok := recurring["interval"].(string); ok {
+									subscription.Interval = interval
+								}
+								if intervalCount, ok := recurring["interval_count"].(float64); ok {
+									subscription.IntervalCount = int64(intervalCount)
 								}
 							}
 						}
