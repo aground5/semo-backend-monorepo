@@ -114,6 +114,16 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 		}
 	}
 
+	var planID *string
+
+	if len(activeSub.Items.Data) > 0 {
+		item := activeSub.Items.Data[0]
+		if item.Price != nil && item.Price.Product != nil {
+			id := item.Price.Product.ID
+			planID = &id
+		}
+	}
+
 	h.logger.Info("Active subscription found",
 		zap.String("subscription_id", activeSub.ID),
 		zap.String("user_id", user.UserID),
@@ -131,6 +141,7 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 		Currency:          currency,
 		Interval:          interval,
 		IntervalCount:     intervalCount,
+		PlanID:            planID,
 	})
 }
 
