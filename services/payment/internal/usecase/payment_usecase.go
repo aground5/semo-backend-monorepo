@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
 	"go.uber.org/zap"
@@ -50,12 +51,32 @@ func (u *PaymentUsecase) GetPayment(ctx context.Context, id string) (*entity.Pay
 	return u.paymentRepo.GetByID(ctx, id)
 }
 
-func (u *PaymentUsecase) GetUserPayments(ctx context.Context, userID string) ([]*entity.Payment, error) {
+func (u *PaymentUsecase) GetUserPayments(ctx context.Context, userID string, page, limit int) (*entity.PaginatedPaymentsResponse, error) {
 	if userID == "" {
 		return nil, errors.New("user ID is required")
 	}
 
-	return u.paymentRepo.GetByUserID(ctx, userID)
+	// Create and validate pagination params
+	params := &entity.PaginationParams{
+		Page:  page,
+		Limit: limit,
+	}
+	params.Validate()
+
+	// Get paginated payments from repository
+	payments, total, err := u.paymentRepo.GetByUserID(ctx, userID, params.Page, params.Limit)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create pagination metadata
+	meta := entity.NewPaginationMeta(params.Page, params.Limit, total)
+
+	// Return paginated response
+	return &entity.PaginatedPaymentsResponse{
+		Data:       payments,
+		Pagination: meta,
+	}, nil
 }
 
 func (u *PaymentUsecase) UpdatePaymentStatus(ctx context.Context, id string, status entity.PaymentStatus) error {
@@ -66,19 +87,4 @@ func (u *PaymentUsecase) UpdatePaymentStatus(ctx context.Context, id string, sta
 
 	payment.Status = status
 	return u.paymentRepo.Update(ctx, payment)
-}
-
-func (u *PaymentUsecase) GetUserRecentPayments(ctx context.Context, userID string, limit int) ([]*entity.Payment, error) {
-	if userID == "" {
-		return nil, errors.New("user ID is required")
-	}
-
-	// Validate limit parameter
-	if limit < 1 {
-		limit = 10 // Default limit
-	} else if limit > 100 {
-		limit = 100 // Maximum limit
-	}
-
-	return u.paymentRepo.GetRecentByUserID(ctx, userID, limit)
 }
