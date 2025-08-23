@@ -71,24 +71,51 @@ func (r *paymentRepository) GetByID(ctx context.Context, id string) (*entity.Pay
 	return r.modelToEntity(&payment), nil
 }
 
-func (r *paymentRepository) GetByUserID(ctx context.Context, userID string) ([]*entity.Payment, error) {
+func (r *paymentRepository) GetByUserID(ctx context.Context, userID string, page, limit int) ([]*entity.Payment, int64, error) {
 	var payments []model.Payment
+	var total int64
 
 	uuid, err := uuid.Parse(userID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid user ID: %w", err)
+		return nil, 0, fmt.Errorf("invalid user ID: %w", err)
 	}
 
+	// Get total count
+	err = r.db.WithContext(ctx).
+		Model(&model.Payment{}).
+		Where("user_id = ?", uuid).
+		Count(&total).Error
+	
+	if err != nil {
+		r.logger.Error("Failed to count payments by user ID",
+			zap.String("user_id", userID),
+			zap.Error(err))
+		return nil, 0, fmt.Errorf("failed to count payments: %w", err)
+	}
+
+	// If no records, return early
+	if total == 0 {
+		return []*entity.Payment{}, 0, nil
+	}
+
+	// Calculate offset
+	offset := (page - 1) * limit
+
+	// Get paginated records
 	err = r.db.WithContext(ctx).
 		Where("user_id = ?", uuid).
 		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
 		Find(&payments).Error
 
 	if err != nil {
 		r.logger.Error("Failed to get payments by user ID",
 			zap.String("user_id", userID),
+			zap.Int("page", page),
+			zap.Int("limit", limit),
 			zap.Error(err))
-		return nil, fmt.Errorf("failed to get payments: %w", err)
+		return nil, 0, fmt.Errorf("failed to get payments: %w", err)
 	}
 
 	entities := make([]*entity.Payment, len(payments))
@@ -96,7 +123,7 @@ func (r *paymentRepository) GetByUserID(ctx context.Context, userID string) ([]*
 		entities[i] = r.modelToEntity(&p)
 	}
 
-	return entities, nil
+	return entities, total, nil
 }
 
 func (r *paymentRepository) GetByTransactionID(ctx context.Context, transactionID string) (*entity.Payment, error) {
@@ -203,39 +230,6 @@ func (r *paymentRepository) List(ctx context.Context, limit, offset int) ([]*ent
 	return entities, nil
 }
 
-func (r *paymentRepository) GetRecentByUserID(ctx context.Context, userID string, limit int) ([]*entity.Payment, error) {
-	var payments []model.Payment
-
-	uuid, err := uuid.Parse(userID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid user ID: %w", err)
-	}
-
-	query := r.db.WithContext(ctx).
-		Where("user_id = ?", uuid).
-		Order("created_at DESC")
-	
-	if limit > 0 {
-		query = query.Limit(limit)
-	}
-
-	err = query.Find(&payments).Error
-	if err != nil {
-		r.logger.Error("Failed to get recent payments by user ID",
-			zap.String("user_id", userID),
-			zap.Int("limit", limit),
-			zap.Error(err))
-		return nil, fmt.Errorf("failed to get recent payments: %w", err)
-	}
-
-	entities := make([]*entity.Payment, len(payments))
-	for i, p := range payments {
-		entities[i] = r.modelToEntity(&p)
-	}
-
-	return entities, nil
-}
-
 // modelToEntity converts database model to domain entity
 func (r *paymentRepository) modelToEntity(m *model.Payment) *entity.Payment {
 	if m == nil {
@@ -245,7 +239,7 @@ func (r *paymentRepository) modelToEntity(m *model.Payment) *entity.Payment {
 	e := &entity.Payment{
 		ID:        fmt.Sprintf("%d", m.ID),
 		UserID:    m.UserID.String(),
-		Amount:    float64(m.AmountCents) / 100, // Convert from cents
+		Amount:    float64(m.AmountCents), // Convert from cents
 		Currency:  m.Currency,
 		Status:    entity.PaymentStatus(m.Status),
 		CreatedAt: m.CreatedAt,
