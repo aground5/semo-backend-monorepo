@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -39,11 +40,6 @@ func NewSubscriptionHandler(
 	}
 }
 
-type SubscriptionStatus struct {
-	Active       bool                 `json:"active"`
-	Subscription *entity.Subscription `json:"subscription,omitempty"`
-}
-
 func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 	// Get authenticated user from JWT
 	user, err := auth.RequireAuth(c)
@@ -58,20 +54,32 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 	// Get active subscription for the user
 	activeSub, err := h.subscriptionService.GetActiveSubscriptionForUser(c.Request().Context(), user.UserID)
 	if err != nil {
+		if errors.Is(err, domainErrors.ErrNoCustomerMapping) {
+			// Customer mapping doesn't exist - create it lazily
+			h.logger.Info("No customer mapping found, creating one",
+				zap.String("user_id", user.UserID))
+			
+			// Create customer mapping with user's email
+			if err := h.getOrCreateCustomerMapping(c, user); err != nil {
+				h.logger.Error("Failed to create customer mapping",
+					zap.String("user_id", user.UserID),
+					zap.Error(err))
+				return c.JSON(http.StatusInternalServerError, echo.Map{
+					"error": "Failed to initialize customer account",
+				})
+			}
+			
+			// Return HTTP 204 No Content (no active subscription)
+			return c.NoContent(http.StatusNoContent)
+		}
+		if errors.Is(err, domainErrors.ErrNoActiveSubscription) {
+			// Customer exists but no active subscription
+			return c.NoContent(http.StatusNoContent)
+		}
+		// Other errors
 		h.logger.Error("Failed to get active subscription",
 			zap.String("user_id", user.UserID),
 			zap.Error(err))
-		if errors.Is(err, domainErrors.ErrNoCustomerMapping) {
-			return c.JSON(http.StatusNotFound, echo.Map{
-				"error":   "No subscription found",
-				"message": "User has no associated Stripe customer",
-			})
-		}
-		if errors.Is(err, domainErrors.ErrNoActiveSubscription) {
-			return c.JSON(http.StatusNotFound, echo.Map{
-				"error": "No active subscription found",
-			})
-		}
 		return c.JSON(http.StatusInternalServerError, echo.Map{
 			"error": "Failed to retrieve subscription information",
 		})
@@ -143,6 +151,45 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 		IntervalCount:     intervalCount,
 		PlanID:            planID,
 	})
+}
+
+// getOrCreateCustomerMapping ensures a Stripe customer exists for the authenticated user
+func (h *SubscriptionHandler) getOrCreateCustomerMapping(c echo.Context, user *auth.AuthUser) error {
+	// Check if we already have a Stripe customer for this user
+	existingMapping, err := h.customerMappingRepo.GetByUserID(c.Request().Context(), user.UserID)
+	if err == nil && existingMapping != nil {
+		// Customer mapping already exists
+		return nil
+	}
+
+	// Create new Stripe customer
+	customerParams := &stripe.CustomerParams{
+		Email: stripe.String(user.Email),
+		Metadata: map[string]string{
+			"user_id": user.UserID,
+		},
+	}
+	stripeCustomer, err := customer.New(customerParams)
+	if err != nil {
+		return fmt.Errorf("failed to create Stripe customer: %w", err)
+	}
+
+	h.logger.Info("Created new Stripe customer for user",
+		zap.String("customer_id", stripeCustomer.ID),
+		zap.String("user_id", user.UserID),
+		zap.String("email", user.Email))
+
+	// Save customer mapping
+	mapping := &entity.CustomerMapping{
+		UserID:           user.UserID,
+		StripeCustomerID: stripeCustomer.ID,
+		Email:            user.Email,
+	}
+	if err := h.customerMappingRepo.Create(c.Request().Context(), mapping); err != nil {
+		return fmt.Errorf("failed to save customer mapping: %w", err)
+	}
+
+	return nil
 }
 
 func (h *SubscriptionHandler) CreateSubscription(c echo.Context) error {
