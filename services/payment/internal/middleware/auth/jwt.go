@@ -7,13 +7,14 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 )
 
 // AuthUser represents an authenticated user from JWT
 type AuthUser struct {
-	UserID string `json:"user_id"`
+	UserID string `json:"user_id"` // Now stores workspace_id
 	Email  string `json:"email"`
 	Role   string `json:"role"`
 }
@@ -86,25 +87,38 @@ func JWTMiddleware(config JWTConfig) echo.MiddlewareFunc {
 				})
 			}
 
-			// Extract claims
+			// Extract claims (JWT validation only, not extracting user_id)
 			if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-				// Extract user information from Supabase JWT claims
-				userID, ok := claims["sub"].(string)
-				if !ok || userID == "" {
-					config.Logger.Warn("Missing user ID in JWT claims",
+				// Extract workspace_id from X-Workspace-Id header
+				workspaceID := c.Request().Header.Get("X-Workspace-Id")
+				if workspaceID == "" {
+					config.Logger.Warn("Missing X-Workspace-Id header",
 						zap.String("path", path))
-					return c.JSON(http.StatusUnauthorized, echo.Map{
-						"error": "Invalid token claims",
-						"code":  "INVALID_CLAIMS",
+					return c.JSON(http.StatusBadRequest, echo.Map{
+						"error": "X-Workspace-Id header required",
+						"code":  "MISSING_WORKSPACE_ID",
 					})
 				}
 
+				// Validate workspace_id is a valid UUID format
+				if _, err := uuid.Parse(workspaceID); err != nil {
+					config.Logger.Warn("Invalid workspace_id format",
+						zap.String("workspace_id", workspaceID),
+						zap.String("path", path),
+						zap.Error(err))
+					return c.JSON(http.StatusBadRequest, echo.Map{
+						"error": "X-Workspace-Id must be a valid UUID format",
+						"code":  "INVALID_WORKSPACE_ID_FORMAT",
+					})
+				}
+
+				// Extract optional fields from JWT claims
 				email, _ := claims["email"].(string)
 				role, _ := claims["role"].(string)
 
-				// Create authenticated user
+				// Create authenticated user with workspace_id as user_id
 				authUser := &AuthUser{
-					UserID: userID,
+					UserID: workspaceID, // Using workspace_id as user_id
 					Email:  email,
 					Role:   role,
 				}
@@ -113,10 +127,12 @@ func JWTMiddleware(config JWTConfig) echo.MiddlewareFunc {
 				ctx := context.WithValue(c.Request().Context(), userContextKey, authUser)
 				c.SetRequest(c.Request().WithContext(ctx))
 
-				c.Set("user_id", userID)
+				// Set user_id in echo context (actually workspace_id)
+				c.Set("user_id", workspaceID)
+				c.Set("workspace_id", workspaceID) // Also set as workspace_id for clarity
 
 				config.Logger.Debug("User authenticated successfully",
-					zap.String("user_id", userID),
+					zap.String("workspace_id", workspaceID),
 					zap.String("email", email),
 					zap.String("path", path))
 
@@ -152,4 +168,13 @@ func RequireAuth(c echo.Context) (*AuthUser, error) {
 		})
 	}
 	return user, nil
+}
+
+// GetWorkspaceID is a helper function to get workspace_id from context
+func GetWorkspaceID(c echo.Context) (string, error) {
+	user, err := GetUserFromContext(c)
+	if err != nil {
+		return "", err
+	}
+	return user.UserID, nil // UserID now contains workspace_id
 }
