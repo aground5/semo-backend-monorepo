@@ -31,7 +31,7 @@ type PaginationInfo struct {
 
 // TransactionFilters contains query filters for transaction retrieval
 type TransactionFilters struct {
-	UserID          uuid.UUID
+	UserID          uuid.UUID // Note: This still represents the Universal ID value
 	Limit           int
 	Offset          int
 	StartDate       *time.Time

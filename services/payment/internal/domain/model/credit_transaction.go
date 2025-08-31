@@ -40,7 +40,7 @@ func (t TransactionType) Value() (driver.Value, error) {
 // CreditTransaction represents a credit transaction
 type CreditTransaction struct {
 	ID              int64           `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID          uuid.UUID       `gorm:"type:uuid;not null;index:idx_credit_transactions_user_created" json:"user_id"`
+	UniversalID     uuid.UUID       `gorm:"column:universal_id;type:uuid;not null;index:idx_credit_transactions_universal_created" json:"universal_id"`
 	SubscriptionID  *int64          `gorm:"index" json:"subscription_id,omitempty"`
 	TransactionType TransactionType `gorm:"type:transaction_type;not null" json:"transaction_type"`
 	Amount          decimal.Decimal `gorm:"type:decimal(15,2);not null" json:"amount"`
@@ -50,7 +50,7 @@ type CreditTransaction struct {
 	UsageMetadata   JSONB           `gorm:"type:jsonb;default:'{}'" json:"usage_metadata"`
 	ReferenceID     *string         `gorm:"size:200;index:idx_credit_transactions_reference,where:reference_id IS NOT NULL" json:"reference_id,omitempty"`
 	IdempotencyKey  *uuid.UUID      `gorm:"type:uuid;unique" json:"idempotency_key,omitempty"`
-	CreatedAt       time.Time       `gorm:"default:now();index:idx_credit_transactions_user_created" json:"created_at"`
+	CreatedAt       time.Time       `gorm:"default:now();index:idx_credit_transactions_universal_created" json:"created_at"`
 
 	// Relations
 	Subscription *Subscription `gorm:"foreignKey:SubscriptionID" json:"subscription,omitempty"`
@@ -61,9 +61,9 @@ func (CreditTransaction) TableName() string {
 	return "credit_transactions"
 }
 
-// UserCreditBalance represents the current credit balance for a user
+// UserCreditBalance represents the current credit balance for a universal ID
 type UserCreditBalance struct {
-	UserID            uuid.UUID       `gorm:"type:uuid;primaryKey" json:"user_id"`
+	UniversalID       uuid.UUID       `gorm:"column:universal_id;type:uuid;primaryKey" json:"universal_id"`
 	CurrentBalance    decimal.Decimal `gorm:"type:decimal(15,2)" json:"current_balance"`
 	LastTransactionAt time.Time       `json:"last_transaction_at"`
 }

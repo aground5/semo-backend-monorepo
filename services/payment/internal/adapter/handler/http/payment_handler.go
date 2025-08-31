@@ -72,16 +72,16 @@ func (h *PaymentHandler) GetUserPayments(c echo.Context) error {
 	}
 
 	h.logger.Info("Getting user payments",
-		zap.String("user_id", user.UserID),
+		zap.String("universal_id", user.UniversalID),
 		zap.String("email", user.Email),
 		zap.Int("page", page),
 		zap.Int("limit", limit),
 	)
 
-	response, err := h.usecase.GetUserPayments(c.Request().Context(), user.UserID, page, limit)
+	response, err := h.usecase.GetUserPayments(c.Request().Context(), user.UniversalID, page, limit)
 	if err != nil {
 		h.logger.Error("Failed to get user payments",
-			zap.String("user_id", user.UserID),
+			zap.String("universal_id", user.UniversalID),
 			zap.Int("page", page),
 			zap.Int("limit", limit),
 			zap.Error(err))
@@ -91,7 +91,7 @@ func (h *PaymentHandler) GetUserPayments(c echo.Context) error {
 	}
 
 	h.logger.Debug("Retrieved user payments",
-		zap.String("user_id", user.UserID),
+		zap.String("universal_id", user.UniversalID),
 		zap.Int("payment_count", len(response.Data)),
 		zap.Int64("total_count", response.Pagination.Total),
 		zap.Int("current_page", response.Pagination.CurrentPage),

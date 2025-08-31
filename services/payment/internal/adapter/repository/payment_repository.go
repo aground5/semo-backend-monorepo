@@ -27,13 +27,13 @@ func NewPaymentRepository(db *gorm.DB, logger *zap.Logger) repository.PaymentRep
 
 func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment) error {
 	// Convert entity to model
-	userID, err := uuid.Parse(payment.UserID)
+	universalID, err := uuid.Parse(payment.UniversalID)
 	if err != nil {
-		return fmt.Errorf("invalid user ID: %w", err)
+		return fmt.Errorf("invalid universal ID: %w", err)
 	}
 
 	paymentModel := &model.Payment{
-		UserID:                userID,
+		UniversalID:           universalID,
 		StripePaymentIntentID: &payment.TransactionID,
 		AmountCents:           int(payment.Amount * 100), // Convert to cents
 		Currency:              payment.Currency,
@@ -44,7 +44,7 @@ func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment)
 	err = r.db.WithContext(ctx).Create(paymentModel).Error
 	if err != nil {
 		r.logger.Error("Failed to create payment",
-			zap.String("user_id", payment.UserID),
+			zap.String("universal_id", payment.UniversalID),
 			zap.Error(err))
 		return fmt.Errorf("failed to create payment: %w", err)
 	}
@@ -71,24 +71,24 @@ func (r *paymentRepository) GetByID(ctx context.Context, id string) (*entity.Pay
 	return r.modelToEntity(&payment), nil
 }
 
-func (r *paymentRepository) GetByUserID(ctx context.Context, userID string, page, limit int) ([]*entity.Payment, int64, error) {
+func (r *paymentRepository) GetByUniversalID(ctx context.Context, universalID string, page, limit int) ([]*entity.Payment, int64, error) {
 	var payments []model.Payment
 	var total int64
 
-	uuid, err := uuid.Parse(userID)
+	uuid, err := uuid.Parse(universalID)
 	if err != nil {
-		return nil, 0, fmt.Errorf("invalid user ID: %w", err)
+		return nil, 0, fmt.Errorf("invalid universal ID: %w", err)
 	}
 
 	// Get total count
 	err = r.db.WithContext(ctx).
 		Model(&model.Payment{}).
-		Where("user_id = ?", uuid).
+		Where("universal_id = ?", uuid).
 		Count(&total).Error
 	
 	if err != nil {
-		r.logger.Error("Failed to count payments by user ID",
-			zap.String("user_id", userID),
+		r.logger.Error("Failed to count payments by universal ID",
+			zap.String("universal_id", universalID),
 			zap.Error(err))
 		return nil, 0, fmt.Errorf("failed to count payments: %w", err)
 	}
@@ -103,15 +103,15 @@ func (r *paymentRepository) GetByUserID(ctx context.Context, userID string, page
 
 	// Get paginated records
 	err = r.db.WithContext(ctx).
-		Where("user_id = ?", uuid).
+		Where("universal_id = ?", uuid).
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
 		Find(&payments).Error
 
 	if err != nil {
-		r.logger.Error("Failed to get payments by user ID",
-			zap.String("user_id", userID),
+		r.logger.Error("Failed to get payments by universal ID",
+			zap.String("universal_id", universalID),
 			zap.Int("page", page),
 			zap.Int("limit", limit),
 			zap.Error(err))
@@ -237,9 +237,9 @@ func (r *paymentRepository) modelToEntity(m *model.Payment) *entity.Payment {
 	}
 
 	e := &entity.Payment{
-		ID:        fmt.Sprintf("%d", m.ID),
-		UserID:    m.UserID.String(),
-		Amount:    float64(m.AmountCents), // Convert from cents
+		ID:          fmt.Sprintf("%d", m.ID),
+		UniversalID: m.UniversalID.String(),
+		Amount:      float64(m.AmountCents), // Convert from cents
 		Currency:  m.Currency,
 		Status:    entity.PaymentStatus(m.Status),
 		CreatedAt: m.CreatedAt,

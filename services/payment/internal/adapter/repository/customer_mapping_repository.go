@@ -29,7 +29,7 @@ func (r *customerMappingRepository) modelToEntity(m *model.CustomerMapping) *ent
 	return &entity.CustomerMapping{
 		ID:               m.ID,
 		StripeCustomerID: m.StripeCustomerID,
-		UserID:           m.UserID.String(),
+		UniversalID:      m.UniversalID.String(),
 		Email:            m.CustomerEmail,
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
@@ -42,7 +42,7 @@ func (r *customerMappingRepository) entityToModel(e *entity.CustomerMapping) (*m
 		return nil, nil
 	}
 
-	userUUID, err := uuid.Parse(e.UserID)
+	userUUID, err := uuid.Parse(e.UniversalID)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func (r *customerMappingRepository) entityToModel(e *entity.CustomerMapping) (*m
 	return &model.CustomerMapping{
 		ID:               e.ID,
 		StripeCustomerID: e.StripeCustomerID,
-		UserID:           userUUID,
+		UniversalID:      userUUID,
 		CustomerEmail:    e.Email,
 		CreatedAt:        e.CreatedAt,
 		UpdatedAt:        e.UpdatedAt,
@@ -77,15 +77,15 @@ func (r *customerMappingRepository) GetByStripeCustomerID(ctx context.Context, s
 	return r.modelToEntity(&mapping), nil
 }
 
-func (r *customerMappingRepository) GetByUserID(ctx context.Context, userID string) (*entity.CustomerMapping, error) {
-	// Parse userID to ensure it's a valid UUID
-	userUUID, err := uuid.Parse(userID)
+func (r *customerMappingRepository) GetByUniversalID(ctx context.Context, universalID string) (*entity.CustomerMapping, error) {
+	// Parse universalID to ensure it's a valid UUID
+	universalUUID, err := uuid.Parse(universalID)
 	if err != nil {
 		return nil, err
 	}
 
 	var mapping model.CustomerMapping
-	err = r.db.WithContext(ctx).Where("user_id = ?", userUUID).First(&mapping).Error
+	err = r.db.WithContext(ctx).Where("universal_id = ?", universalUUID).First(&mapping).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil

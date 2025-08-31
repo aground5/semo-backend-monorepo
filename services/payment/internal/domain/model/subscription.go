@@ -34,10 +34,10 @@ func (s SubscriptionStatus) Value() (driver.Value, error) {
 	return string(s), nil
 }
 
-// Subscription represents a user's subscription
+// Subscription represents a subscription linked to a universal ID
 type Subscription struct {
 	ID                     int64              `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID                 uuid.UUID          `gorm:"type:uuid;not null" json:"user_id"`
+	UniversalID            uuid.UUID          `gorm:"column:universal_id;type:uuid;not null" json:"universal_id"`
 	StripeCustomerID       string             `gorm:"not null;size:100" json:"stripe_customer_id"`
 	StripeSubscriptionID   *string            `gorm:"unique;size:100" json:"stripe_subscription_id,omitempty"`
 	PlanID                 *string            `gorm:"not null;size:100" json:"plan_id,omitempty"`

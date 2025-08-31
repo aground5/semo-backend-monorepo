@@ -168,7 +168,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
         if userID != "" && isValidUUID(userID) && h.customerMappingRepo != nil {
             customerMapping := &entity.CustomerMapping{
                 StripeCustomerID: customerID,
-                UserID:           userID,
+                UniversalID:      userID,
                 Email:            userEmail,
             }
 
@@ -322,7 +322,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 				if existing == nil {
 					customerMapping := &entity.CustomerMapping{
 						StripeCustomerID: customerID,
-						UserID:           userID,
+						UniversalID:      userID,
 						Email:            customerEmail, // Use the extracted email
 					}
 
@@ -672,7 +672,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 					zap.String("customer_id", customerID),
 					zap.Error(err))
 			} else if mapping != nil {
-				userID = mapping.UserID
+				userID = mapping.UniversalID
 				h.logger.Info("Found user ID from customer mapping",
 					zap.String("user_id", userID),
 					zap.String("customer_id", customerID))
@@ -699,7 +699,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 		// Save payment to database with validated user ID
 		if h.paymentRepo != nil && invoice.Customer != nil {
 			paymentEntity := &entity.Payment{
-				UserID:        userID,
+				UniversalID:   userID,
 				TransactionID: invoice.ID,
 				Amount:        float64(invoice.AmountPaid) / 100, // Convert cents to currency units
 				Currency:      string(invoice.Currency),

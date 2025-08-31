@@ -54,7 +54,7 @@ func TestCreditTransactionService_GetUserTransactionHistory(t *testing.T) {
 		transactions := []model.CreditTransaction{
 			{
 				ID:              1,
-				UserID:          userID,
+				UniversalID:     userID,
 				TransactionType: model.TransactionTypeCreditUsage,
 				Amount:          decimal.NewFromFloat(10.00),
 				BalanceAfter:    decimal.NewFromFloat(90.00),
@@ -63,7 +63,7 @@ func TestCreditTransactionService_GetUserTransactionHistory(t *testing.T) {
 			},
 			{
 				ID:              2,
-				UserID:          userID,
+				UniversalID:     userID,
 				TransactionType: model.TransactionTypeCreditAllocation,
 				Amount:          decimal.NewFromFloat(100.00),
 				BalanceAfter:    decimal.NewFromFloat(100.00),
@@ -130,7 +130,7 @@ func TestCreditTransactionService_GetUserTransactionHistory(t *testing.T) {
 		transactions := []model.CreditTransaction{
 			{
 				ID:              1,
-				UserID:          userID,
+				UniversalID:     userID,
 				TransactionType: model.TransactionTypeCreditUsage,
 				Amount:          decimal.NewFromFloat(5.00),
 				BalanceAfter:    decimal.NewFromFloat(95.00),
@@ -168,7 +168,7 @@ func TestCreditTransactionService_GetUserCreditBalance(t *testing.T) {
 		service := usecase.NewCreditTransactionService(mockRepo, logger)
 
 		balance := &model.UserCreditBalance{
-			UserID:         userID,
+			UniversalID:    userID,
 			CurrentBalance: decimal.NewFromFloat(150.50),
 		}
 

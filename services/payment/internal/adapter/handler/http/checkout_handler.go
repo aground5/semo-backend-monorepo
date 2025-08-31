@@ -124,14 +124,14 @@ func (h *CheckoutHandler) CheckSessionStatus(c echo.Context) error {
 
 	h.logger.Info("Checking session status",
 		zap.String("session_id", sessionID),
-		zap.String("user_id", user.UserID),
+		zap.String("universal_id", user.UniversalID),
 	)
 
 	s, err := checkoutsession.Get(sessionID, nil)
 	if err != nil {
 		h.logger.Error("Failed to retrieve session",
 			zap.String("session_id", sessionID),
-			zap.String("user_id", user.UserID),
+			zap.String("universal_id", user.UniversalID),
 			zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, echo.Map{
 			"error": "Failed to retrieve session",
@@ -140,10 +140,10 @@ func (h *CheckoutHandler) CheckSessionStatus(c echo.Context) error {
 
 	// Validate user ownership of the session
 	sessionUserID, exists := s.Metadata["user_id"]
-	if !exists || sessionUserID != user.UserID {
+	if !exists || sessionUserID != user.UniversalID {
 		h.logger.Warn("Unauthorized session access attempt",
 			zap.String("session_id", sessionID),
-			zap.String("requesting_user_id", user.UserID),
+			zap.String("requesting_universal_id", user.UniversalID),
 			zap.String("session_user_id", sessionUserID),
 		)
 		return c.JSON(http.StatusForbidden, echo.Map{
@@ -163,7 +163,7 @@ func (h *CheckoutHandler) CheckSessionStatus(c echo.Context) error {
 		zap.String("status", string(s.Status)),
 		zap.String("payment_status", string(s.PaymentStatus)),
 		zap.String("customer_id", customerID),
-		zap.String("user_id", user.UserID),
+		zap.String("universal_id", user.UniversalID),
 	)
 
 	return c.JSON(http.StatusOK, echo.Map{

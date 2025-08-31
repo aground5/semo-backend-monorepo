@@ -14,9 +14,9 @@ import (
 
 // AuthUser represents an authenticated user from JWT
 type AuthUser struct {
-	UserID string `json:"user_id"` // Now stores workspace_id
-	Email  string `json:"email"`
-	Role   string `json:"role"`
+	UniversalID string `json:"universal_id"` // Now stores workspace_id as universal_id
+	Email       string `json:"email"`
+	Role        string `json:"role"`
 }
 
 // contextKey is used for storing user in context
@@ -116,19 +116,19 @@ func JWTMiddleware(config JWTConfig) echo.MiddlewareFunc {
 				email, _ := claims["email"].(string)
 				role, _ := claims["role"].(string)
 
-				// Create authenticated user with workspace_id as user_id
+				// Create authenticated user with workspace_id as universal_id
 				authUser := &AuthUser{
-					UserID: workspaceID, // Using workspace_id as user_id
-					Email:  email,
-					Role:   role,
+					UniversalID: workspaceID, // Using workspace_id as universal_id
+					Email:       email,
+					Role:        role,
 				}
 
 				// Store user in request context
 				ctx := context.WithValue(c.Request().Context(), userContextKey, authUser)
 				c.SetRequest(c.Request().WithContext(ctx))
 
-				// Set user_id in echo context (actually workspace_id)
-				c.Set("user_id", workspaceID)
+				// Set universal_id in echo context (actually workspace_id)
+				c.Set("universal_id", workspaceID)
 				c.Set("workspace_id", workspaceID) // Also set as workspace_id for clarity
 
 				config.Logger.Debug("User authenticated successfully",
@@ -170,11 +170,16 @@ func RequireAuth(c echo.Context) (*AuthUser, error) {
 	return user, nil
 }
 
-// GetWorkspaceID is a helper function to get workspace_id from context
-func GetWorkspaceID(c echo.Context) (string, error) {
+// GetUniversalID is a helper function to get universal_id from context
+func GetUniversalID(c echo.Context) (string, error) {
 	user, err := GetUserFromContext(c)
 	if err != nil {
 		return "", err
 	}
-	return user.UserID, nil // UserID now contains workspace_id
+	return user.UniversalID, nil // UniversalID now contains workspace_id
+}
+
+// GetWorkspaceID is a helper function to get workspace_id from context (alias for GetUniversalID)
+func GetWorkspaceID(c echo.Context) (string, error) {
+	return GetUniversalID(c)
 }
