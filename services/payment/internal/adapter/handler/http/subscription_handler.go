@@ -48,21 +48,21 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 	}
 
 	h.logger.Info("Getting current subscription",
-		zap.String("user_id", user.UserID),
+		zap.String("universal_id", user.UniversalID),
 	)
 
 	// Get active subscription for the user
-	activeSub, err := h.subscriptionService.GetActiveSubscriptionForUser(c.Request().Context(), user.UserID)
+	activeSub, err := h.subscriptionService.GetActiveSubscriptionForUser(c.Request().Context(), user.UniversalID)
 	if err != nil {
 		if errors.Is(err, domainErrors.ErrNoCustomerMapping) {
 			// Customer mapping doesn't exist - create it lazily
 			h.logger.Info("No customer mapping found, creating one",
-				zap.String("user_id", user.UserID))
+				zap.String("universal_id", user.UniversalID))
 			
 			// Create customer mapping with user's email
 			if err := h.getOrCreateCustomerMapping(c, user); err != nil {
 				h.logger.Error("Failed to create customer mapping",
-					zap.String("user_id", user.UserID),
+					zap.String("universal_id", user.UniversalID),
 					zap.Error(err))
 				return c.JSON(http.StatusInternalServerError, echo.Map{
 					"error": "Failed to initialize customer account",
@@ -78,7 +78,7 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 		}
 		// Other errors
 		h.logger.Error("Failed to get active subscription",
-			zap.String("user_id", user.UserID),
+			zap.String("universal_id", user.UniversalID),
 			zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, echo.Map{
 			"error": "Failed to retrieve subscription information",
@@ -134,7 +134,7 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 
 	h.logger.Info("Active subscription found",
 		zap.String("subscription_id", activeSub.ID),
-		zap.String("user_id", user.UserID),
+		zap.String("universal_id", user.UniversalID),
 		zap.String("status", string(activeSub.Status)),
 	)
 
@@ -156,7 +156,7 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 // getOrCreateCustomerMapping ensures a Stripe customer exists for the authenticated user
 func (h *SubscriptionHandler) getOrCreateCustomerMapping(c echo.Context, user *auth.AuthUser) error {
 	// Check if we already have a Stripe customer for this user
-	existingMapping, err := h.customerMappingRepo.GetByUserID(c.Request().Context(), user.UserID)
+	existingMapping, err := h.customerMappingRepo.GetByUniversalID(c.Request().Context(), user.UniversalID)
 	if err == nil && existingMapping != nil {
 		// Customer mapping already exists
 		return nil
@@ -166,7 +166,7 @@ func (h *SubscriptionHandler) getOrCreateCustomerMapping(c echo.Context, user *a
 	customerParams := &stripe.CustomerParams{
 		Email: stripe.String(user.Email),
 		Metadata: map[string]string{
-			"user_id": user.UserID,
+			"universal_id": user.UniversalID,
 		},
 	}
 	stripeCustomer, err := customer.New(customerParams)
@@ -176,12 +176,12 @@ func (h *SubscriptionHandler) getOrCreateCustomerMapping(c echo.Context, user *a
 
 	h.logger.Info("Created new Stripe customer for user",
 		zap.String("customer_id", stripeCustomer.ID),
-		zap.String("user_id", user.UserID),
+		zap.String("universal_id", user.UniversalID),
 		zap.String("email", user.Email))
 
 	// Save customer mapping
 	mapping := &entity.CustomerMapping{
-		UserID:           user.UserID,
+		UniversalID:      user.UniversalID,
 		StripeCustomerID: stripeCustomer.ID,
 		Email:            user.Email,
 	}
@@ -207,9 +207,9 @@ func (h *SubscriptionHandler) CreateSubscription(c echo.Context) error {
 	}
 
 	// Validate user ID from JWT is a valid UUID
-	if _, err := uuid.Parse(user.UserID); err != nil {
+	if _, err := uuid.Parse(user.UniversalID); err != nil {
 		h.logger.Error("Invalid user ID format from JWT",
-			zap.String("user_id", user.UserID),
+			zap.String("universal_id", user.UniversalID),
 			zap.Error(err))
 		return c.JSON(http.StatusBadRequest, echo.Map{
 			"error":   "Invalid user ID in authentication token",
@@ -220,23 +220,23 @@ func (h *SubscriptionHandler) CreateSubscription(c echo.Context) error {
 	h.logger.Info("Creating subscription with Payment Element...",
 		zap.String("price_id", req.PriceID),
 		zap.String("email", req.Email),
-		zap.String("user_id", user.UserID),
+		zap.String("universal_id", user.UniversalID),
 		zap.String("jwt_email", user.Email),
 	)
 
 	// Check if we already have a Stripe customer for this user
 	var customerID string
 	if h.customerMappingRepo != nil {
-		existingMapping, err := h.customerMappingRepo.GetByUserID(c.Request().Context(), user.UserID)
+		existingMapping, err := h.customerMappingRepo.GetByUniversalID(c.Request().Context(), user.UniversalID)
 		if err != nil {
 			h.logger.Warn("Error checking for existing customer mapping",
-				zap.String("user_id", user.UserID),
+				zap.String("universal_id", user.UniversalID),
 				zap.Error(err))
 		} else if existingMapping != nil {
 			customerID = existingMapping.StripeCustomerID
 			h.logger.Info("Found existing Stripe customer",
 				zap.String("customer_id", customerID),
-				zap.String("user_id", user.UserID))
+				zap.String("universal_id", user.UniversalID))
 		}
 	}
 
@@ -246,7 +246,7 @@ func (h *SubscriptionHandler) CreateSubscription(c echo.Context) error {
 		customerParams := &stripe.CustomerParams{
 			Email: stripe.String(req.Email),
 			Metadata: map[string]string{
-				"user_id": user.UserID,
+				"universal_id": user.UniversalID,
 			},
 		}
 		customer, err := customer.New(customerParams)
@@ -264,10 +264,10 @@ func (h *SubscriptionHandler) CreateSubscription(c echo.Context) error {
 		// Save customer mapping if repository is available
 		if h.customerMappingRepo != nil {
 			// Parse user ID to UUID
-			parsedUserID, err := uuid.Parse(user.UserID)
+			parsedUniversalID, err := uuid.Parse(user.UniversalID)
 			if err != nil {
 				h.logger.Error("Failed to parse user ID",
-					zap.String("user_id", user.UserID),
+					zap.String("universal_id", user.UniversalID),
 					zap.Error(err))
 				return c.JSON(http.StatusInternalServerError, echo.Map{
 					"error": "Invalid user ID format",
@@ -275,12 +275,12 @@ func (h *SubscriptionHandler) CreateSubscription(c echo.Context) error {
 			}
 
 			mapping := &entity.CustomerMapping{
-				UserID:           parsedUserID.String(),
+				UniversalID:      parsedUniversalID.String(),
 				StripeCustomerID: customerID,
 			}
 			if err := h.customerMappingRepo.Create(c.Request().Context(), mapping); err != nil {
 				h.logger.Warn("Failed to save customer mapping",
-					zap.String("user_id", user.UserID),
+					zap.String("universal_id", user.UniversalID),
 					zap.String("customer_id", customerID),
 					zap.Error(err))
 			}
@@ -306,7 +306,7 @@ func (h *SubscriptionHandler) CreateSubscription(c echo.Context) error {
 			"pending_setup_intent",
 		}),
 		Metadata: map[string]string{
-			"user_id": user.UserID,
+			"universal_id": user.UniversalID,
 		},
 	}
 
@@ -367,14 +367,14 @@ func (h *SubscriptionHandler) CancelCurrentSubscription(c echo.Context) error {
 	}
 
 	h.logger.Info("Attempting to cancel current subscription",
-		zap.String("user_id", user.UserID),
+		zap.String("universal_id", user.UniversalID),
 	)
 
 	// Cancel the user's active subscription
-	updatedSub, err := h.subscriptionService.CancelSubscriptionForUser(c.Request().Context(), user.UserID)
+	updatedSub, err := h.subscriptionService.CancelSubscriptionForUser(c.Request().Context(), user.UniversalID)
 	if err != nil {
 		h.logger.Error("Failed to cancel subscription",
-			zap.String("user_id", user.UserID),
+			zap.String("universal_id", user.UniversalID),
 			zap.Error(err))
 		
 		// Handle specific error cases
@@ -401,7 +401,7 @@ func (h *SubscriptionHandler) CancelCurrentSubscription(c echo.Context) error {
 
 	h.logger.Info("Subscription canceled successfully",
 		zap.String("subscription_id", updatedSub.ID),
-		zap.String("user_id", user.UserID),
+		zap.String("universal_id", user.UniversalID),
 		zap.Time("cancel_at", time.Unix(updatedSub.CurrentPeriodEnd, 0)),
 	)
 

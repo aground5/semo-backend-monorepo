@@ -173,14 +173,14 @@ func (r *subscriptionRepository) Cancel(ctx context.Context, subscriptionID stri
 
 		r.logger.Info("Subscription status updated to inactive",
 			zap.String("subscription_id", subscriptionID),
-			zap.String("user_id", subscription.UserID.String()))
+			zap.String("universal_id", subscription.UniversalID.String()))
 
 		// Get current balance before resetting
 		var currentBalance model.UserCreditBalance
-		err = tx.Where("user_id = ?", subscription.UserID).First(&currentBalance).Error
+		err = tx.Where("universal_id = ?", subscription.UniversalID).First(&currentBalance).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			r.logger.Error("Failed to retrieve current balance",
-				zap.String("user_id", subscription.UserID.String()),
+				zap.String("universal_id", subscription.UniversalID.String()),
 				zap.Error(err))
 			return fmt.Errorf("failed to retrieve current balance: %w", err)
 		}
@@ -189,7 +189,7 @@ func (r *subscriptionRepository) Cancel(ctx context.Context, subscriptionID stri
 		if err == nil && currentBalance.CurrentBalance.IsPositive() {
 			// Create a transaction record for the balance reset
 			balanceResetTransaction := &model.CreditTransaction{
-				UserID:          subscription.UserID,
+				UniversalID:     subscription.UniversalID,
 				SubscriptionID:  &subscription.ID,
 				TransactionType: model.TransactionTypeSubscriptionCancellation,
 				Amount:          currentBalance.CurrentBalance.Neg(), // Negative amount to zero out balance
@@ -201,20 +201,20 @@ func (r *subscriptionRepository) Cancel(ctx context.Context, subscriptionID stri
 			err = tx.Create(balanceResetTransaction).Error
 			if err != nil {
 				r.logger.Error("Failed to create balance reset transaction",
-					zap.String("user_id", subscription.UserID.String()),
+					zap.String("universal_id", subscription.UniversalID.String()),
 					zap.String("subscription_id", subscriptionID),
 					zap.Error(err))
 				return fmt.Errorf("failed to create balance reset transaction: %w", err)
 			}
 
 			r.logger.Info("Created balance reset transaction",
-				zap.String("user_id", subscription.UserID.String()),
+				zap.String("universal_id", subscription.UniversalID.String()),
 				zap.String("amount_reset", currentBalance.CurrentBalance.String()),
 				zap.Int64("transaction_id", balanceResetTransaction.ID))
 
 			// Update the user's credit balance to zero
 			err = tx.Model(&model.UserCreditBalance{}).
-				Where("user_id = ?", subscription.UserID).
+				Where("universal_id = ?", subscription.UniversalID).
 				Updates(map[string]interface{}{
 					"current_balance":     decimal.Zero,
 					"last_transaction_at": now,
@@ -222,22 +222,22 @@ func (r *subscriptionRepository) Cancel(ctx context.Context, subscriptionID stri
 
 			if err != nil {
 				r.logger.Error("Failed to reset user credit balance",
-					zap.String("user_id", subscription.UserID.String()),
+					zap.String("universal_id", subscription.UniversalID.String()),
 					zap.Error(err))
 				return fmt.Errorf("failed to reset user credit balance: %w", err)
 			}
 
 			r.logger.Info("User credit balance reset to zero",
-				zap.String("user_id", subscription.UserID.String()),
+				zap.String("universal_id", subscription.UniversalID.String()),
 				zap.String("previous_balance", currentBalance.CurrentBalance.String()))
 		} else {
 			r.logger.Info("No balance to reset for user",
-				zap.String("user_id", subscription.UserID.String()))
+				zap.String("universal_id", subscription.UniversalID.String()))
 		}
 
 		r.logger.Info("Subscription canceled successfully",
 			zap.String("subscription_id", subscriptionID),
-			zap.String("user_id", subscription.UserID.String()))
+			zap.String("universal_id", subscription.UniversalID.String()))
 
 		return nil
 	})
@@ -322,17 +322,17 @@ func (r *subscriptionRepository) entityToModel(ctx context.Context, e *entity.Su
 		return nil, fmt.Errorf("customer mapping not found for stripe customer ID: %s", e.CustomerID)
 	}
 
-	// Parse the user ID from the mapping
-	userID, err := uuid.Parse(customerMapping.UserID)
+	// Parse the universal ID from the mapping
+	universalID, err := uuid.Parse(customerMapping.UniversalID)
 	if err != nil {
-		r.logger.Error("Failed to parse user ID from customer mapping",
-			zap.String("user_id", customerMapping.UserID),
+		r.logger.Error("Failed to parse universal ID from customer mapping",
+			zap.String("universal_id", customerMapping.UniversalID),
 			zap.Error(err))
-		return nil, fmt.Errorf("invalid user ID in customer mapping: %w", err)
+		return nil, fmt.Errorf("invalid universal ID in customer mapping: %w", err)
 	}
 
 	m := &model.Subscription{
-		UserID:               userID,
+		UniversalID:          universalID,
 		StripeCustomerID:     e.CustomerID,
 		StripeSubscriptionID: &e.ID,
 		PlanID:               e.PlanID,  // PlanID 매핑 추가

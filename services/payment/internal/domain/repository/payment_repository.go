@@ -9,7 +9,7 @@ import (
 type PaymentRepository interface {
 	Create(ctx context.Context, payment *entity.Payment) error
 	GetByID(ctx context.Context, id string) (*entity.Payment, error)
-	GetByUserID(ctx context.Context, userID string, page, limit int) ([]*entity.Payment, int64, error)
+	GetByUniversalID(ctx context.Context, universalID string, page, limit int) ([]*entity.Payment, int64, error)
 	GetByTransactionID(ctx context.Context, transactionID string) (*entity.Payment, error)
 	Update(ctx context.Context, payment *entity.Payment) error
 	Delete(ctx context.Context, id string) error

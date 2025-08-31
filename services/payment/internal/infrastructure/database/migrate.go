@@ -68,8 +68,8 @@ func Migrate(db *gorm.DB, logger *zap.Logger) error {
 
 // createCustomIndexes creates custom indexes that GORM doesn't handle automatically
 func createCustomIndexes(db *gorm.DB) error {
-	// Create unique index for active subscriptions per user
-	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_active_subscription_per_user ON subscriptions (user_id) WHERE status = 'active'`).Error; err != nil {
+	// Create unique index for active subscriptions per universal ID
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_active_subscription_per_universal_id ON subscriptions (universal_id) WHERE status = 'active'`).Error; err != nil {
 		return err
 	}
 
@@ -106,53 +106,53 @@ func createDatabaseFunctions(db *gorm.DB, logger *zap.Logger) error {
 	auditFunctionSQL := `
 CREATE OR REPLACE FUNCTION audit_table_changes() RETURNS TRIGGER AS $$
 DECLARE
-    current_user_id UUID;
-    v_user_id UUID;
+    current_universal_id UUID;
+    v_universal_id UUID;
     v_record_id BIGINT;
 BEGIN
-    -- Try to get user context from session
+    -- Try to get universal_id context from session
     BEGIN
-        current_user_id := (current_setting('app.current_user_id', true))::UUID;
+        current_universal_id := (current_setting('app.current_universal_id', true))::UUID;
     EXCEPTION WHEN OTHERS THEN
-        current_user_id := NULL;
+        current_universal_id := NULL;
     END;
     
-    -- If no session user, try to extract from the record
-    IF current_user_id IS NULL THEN
+    -- If no session universal_id, try to extract from the record
+    IF current_universal_id IS NULL THEN
         -- Handle different cases based on operation
         IF TG_OP = 'DELETE' THEN
-            -- Try to get user_id from OLD record
+            -- Try to get universal_id from OLD record
             BEGIN
-                EXECUTE format('SELECT ($1).user_id') INTO v_user_id USING OLD;
+                EXECUTE format('SELECT ($1).universal_id') INTO v_universal_id USING OLD;
             EXCEPTION WHEN OTHERS THEN
-                v_user_id := NULL;
+                v_universal_id := NULL;
             END;
             v_record_id := OLD.id;
         ELSE
-            -- Try to get user_id from NEW record
+            -- Try to get universal_id from NEW record
             BEGIN
-                EXECUTE format('SELECT ($1).user_id') INTO v_user_id USING NEW;
+                EXECUTE format('SELECT ($1).universal_id') INTO v_universal_id USING NEW;
             EXCEPTION WHEN OTHERS THEN
-                v_user_id := NULL;
+                v_universal_id := NULL;
             END;
             v_record_id := NEW.id;
         END IF;
         
-        current_user_id := v_user_id;
+        current_universal_id := v_universal_id;
     END IF;
 
     -- Perform the audit log insert
     IF TG_OP = 'DELETE' THEN
-        INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, ip_address)
-        VALUES (current_user_id, 'DELETE', TG_TABLE_NAME, v_record_id, to_jsonb(OLD), inet_client_addr());
+        INSERT INTO audit_log (universal_id, action, table_name, record_id, old_values, ip_address)
+        VALUES (current_universal_id, 'DELETE', TG_TABLE_NAME, v_record_id, to_jsonb(OLD), inet_client_addr());
         RETURN OLD;
     ELSIF TG_OP = 'UPDATE' THEN
-        INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values, ip_address)
-        VALUES (current_user_id, 'UPDATE', TG_TABLE_NAME, v_record_id, to_jsonb(OLD), to_jsonb(NEW), inet_client_addr());
+        INSERT INTO audit_log (universal_id, action, table_name, record_id, old_values, new_values, ip_address)
+        VALUES (current_universal_id, 'UPDATE', TG_TABLE_NAME, v_record_id, to_jsonb(OLD), to_jsonb(NEW), inet_client_addr());
         RETURN NEW;
     ELSIF TG_OP = 'INSERT' THEN
-        INSERT INTO audit_log (user_id, action, table_name, record_id, new_values, ip_address)
-        VALUES (current_user_id, 'INSERT', TG_TABLE_NAME, v_record_id, to_jsonb(NEW), inet_client_addr());
+        INSERT INTO audit_log (universal_id, action, table_name, record_id, new_values, ip_address)
+        VALUES (current_universal_id, 'INSERT', TG_TABLE_NAME, v_record_id, to_jsonb(NEW), inet_client_addr());
         RETURN NEW;
     END IF;
 END;
@@ -185,17 +185,17 @@ CREATE TRIGGER audit_%s
 		logger.Info("Created audit trigger", zap.String("table", table))
 	}
 
-	// Create set_user_context function for RLS
-	setUserContextSQL := `
-CREATE OR REPLACE FUNCTION set_user_context(user_id UUID)
+	// Create set_universal_id_context function for RLS
+	setUniversalIdContextSQL := `
+CREATE OR REPLACE FUNCTION set_universal_id_context(universal_id UUID)
 RETURNS VOID AS $$
 BEGIN
-    PERFORM set_config('app.current_user_id', user_id::TEXT, true);
+    PERFORM set_config('app.current_universal_id', universal_id::TEXT, true);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;`
 
-	if err := db.Exec(setUserContextSQL).Error; err != nil {
-		logger.Error("Failed to create set_user_context function", zap.Error(err))
+	if err := db.Exec(setUniversalIdContextSQL).Error; err != nil {
+		logger.Error("Failed to create set_universal_id_context function", zap.Error(err))
 		return err
 	}
 

@@ -10,7 +10,7 @@ import (
 // Payment represents a payment record
 type Payment struct {
 	ID                    int64           `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID                uuid.UUID       `gorm:"type:uuid;not null;index" json:"user_id"`
+	UniversalID           uuid.UUID       `gorm:"column:universal_id;type:uuid;not null;index" json:"universal_id"`
 	SubscriptionID        *int64          `gorm:"index" json:"subscription_id,omitempty"`
 	StripePaymentIntentID *string         `gorm:"unique;size:100" json:"stripe_payment_intent_id,omitempty"`
 	StripeChargeID        *string         `gorm:"size:100" json:"stripe_charge_id,omitempty"`

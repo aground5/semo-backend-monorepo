@@ -35,7 +35,7 @@ func NewSubscriptionService(
 // GetActiveSubscriptionForUser finds the active subscription for a given user ID
 func (s *SubscriptionService) GetActiveSubscriptionForUser(ctx context.Context, userID string) (*stripe.Subscription, error) {
 	// Look up customer mapping
-	customerMapping, err := s.customerMappingRepo.GetByUserID(ctx, userID)
+	customerMapping, err := s.customerMappingRepo.GetByUniversalID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get customer mapping: %w", err)
 	}

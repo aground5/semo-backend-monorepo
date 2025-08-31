@@ -64,7 +64,7 @@ func (u *PaymentUsecase) GetUserPayments(ctx context.Context, userID string, pag
 	params.Validate()
 
 	// Get paginated payments from repository
-	payments, total, err := u.paymentRepo.GetByUserID(ctx, userID, params.Page, params.Limit)
+	payments, total, err := u.paymentRepo.GetByUniversalID(ctx, userID, params.Page, params.Limit)
 	if err != nil {
 		return nil, err
 	}

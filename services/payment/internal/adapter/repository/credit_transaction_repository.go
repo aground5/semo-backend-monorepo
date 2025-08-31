@@ -32,7 +32,7 @@ func (r *creditTransactionRepository) GetUserTransactions(ctx context.Context, f
 	var transactions []model.CreditTransaction
 	
 	query := r.db.WithContext(ctx).
-		Where("user_id = ?", filters.UserID).
+		Where("universal_id = ?", filters.UserID).
 		Order("created_at DESC")
 
 	// Apply date filters
@@ -53,7 +53,7 @@ func (r *creditTransactionRepository) GetUserTransactions(ctx context.Context, f
 
 	if err := query.Find(&transactions).Error; err != nil {
 		r.logger.Error("failed to get user transactions",
-			zap.String("user_id", filters.UserID.String()),
+			zap.String("universal_id", filters.UserID.String()),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to get user transactions: %w", err)
 	}
@@ -67,7 +67,7 @@ func (r *creditTransactionRepository) CountUserTransactions(ctx context.Context,
 	
 	query := r.db.WithContext(ctx).
 		Model(&model.CreditTransaction{}).
-		Where("user_id = ?", filters.UserID)
+		Where("universal_id = ?", filters.UserID)
 
 	// Apply date filters
 	if filters.StartDate != nil {
@@ -84,7 +84,7 @@ func (r *creditTransactionRepository) CountUserTransactions(ctx context.Context,
 
 	if err := query.Count(&count).Error; err != nil {
 		r.logger.Error("failed to count user transactions",
-			zap.String("user_id", filters.UserID.String()),
+			zap.String("universal_id", filters.UserID.String()),
 			zap.Error(err))
 		return 0, fmt.Errorf("failed to count user transactions: %w", err)
 	}
@@ -97,7 +97,7 @@ func (r *creditTransactionRepository) GetUserCreditBalance(ctx context.Context, 
 	var balance model.UserCreditBalance
 	
 	err := r.db.WithContext(ctx).
-		Where("user_id = ?", userID).
+		Where("universal_id = ?", userID).
 		First(&balance).Error
 	
 	if err != nil {
@@ -105,7 +105,7 @@ func (r *creditTransactionRepository) GetUserCreditBalance(ctx context.Context, 
 			return nil, nil
 		}
 		r.logger.Error("failed to get user credit balance",
-			zap.String("user_id", userID.String()),
+			zap.String("universal_id", userID.String()),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to get user credit balance: %w", err)
 	}

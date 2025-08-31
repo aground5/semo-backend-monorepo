@@ -3,9 +3,9 @@ package entity
 import "time"
 
 type Payment struct {
-	ID            string                 `json:"id"`
-	UserID        string                 `json:"user_id"`
-	Amount        float64                `json:"amount"`
+	ID          string                 `json:"id"`
+	UniversalID string                 `json:"universal_id"`
+	Amount      float64                `json:"amount"`
 	Currency      string                 `json:"currency"`
 	Status        PaymentStatus          `json:"status"`
 	Method        PaymentMethod          `json:"method"`
