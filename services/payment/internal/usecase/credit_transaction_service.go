@@ -32,27 +32,27 @@ func NewCreditTransactionService(
 // GetUserTransactionHistory retrieves a user's transaction history with pagination and filters
 func (s *CreditTransactionService) GetUserTransactionHistory(
 	ctx context.Context,
-	userID uuid.UUID,
+	universalID uuid.UUID,
 	filters dto.TransactionFilters,
 ) (*dto.TransactionListResponse, error) {
 	// Set user ID and defaults
-	filters.UserID = userID
+	filters.UserID = universalID
 	filters.SetDefaults()
 
 	// Get transactions
-	transactions, err := s.transactionRepo.GetUserTransactions(ctx, filters)
+	transactions, err := s.transactionRepo.GetTransactions(ctx, filters)
 	if err != nil {
-		s.logger.Error("failed to get user transactions",
-			zap.String("user_id", userID.String()),
+		s.logger.Error("failed to get transactions",
+			zap.String("universal_id", universalID.String()),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to get transaction history: %w", err)
 	}
 
 	// Get total count for pagination
-	totalCount, err := s.transactionRepo.CountUserTransactions(ctx, filters)
+	totalCount, err := s.transactionRepo.CountTransactions(ctx, filters)
 	if err != nil {
-		s.logger.Error("failed to count user transactions",
-			zap.String("user_id", userID.String()),
+		s.logger.Error("failed to count transactions",
+			zap.String("universal_id", universalID.String()),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to count transactions: %w", err)
 	}
@@ -97,12 +97,12 @@ func (s *CreditTransactionService) GetUserTransactionHistory(
 	return response, nil
 }
 
-// GetUserCreditBalance retrieves the current credit balance for a user
-func (s *CreditTransactionService) GetUserCreditBalance(ctx context.Context, userID uuid.UUID) (string, error) {
-	balance, err := s.transactionRepo.GetUserCreditBalance(ctx, userID)
+// GetCreditBalance retrieves the current credit balance for a universal ID
+func (s *CreditTransactionService) GetCreditBalance(ctx context.Context, universalID uuid.UUID) (string, error) {
+	balance, err := s.transactionRepo.GetCreditBalance(ctx, universalID)
 	if err != nil {
-		s.logger.Error("failed to get user credit balance",
-			zap.String("user_id", userID.String()),
+		s.logger.Error("failed to get universal ID credit balance",
+			zap.String("universal_id", universalID.String()),
 			zap.Error(err))
 		return "", fmt.Errorf("failed to get credit balance: %w", err)
 	}

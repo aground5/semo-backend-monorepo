@@ -21,18 +21,18 @@ type MockCreditTransactionRepository struct {
 	mock.Mock
 }
 
-func (m *MockCreditTransactionRepository) GetUserTransactions(ctx context.Context, filters dto.TransactionFilters) ([]model.CreditTransaction, error) {
+func (m *MockCreditTransactionRepository) GetTransactions(ctx context.Context, filters dto.TransactionFilters) ([]model.CreditTransaction, error) {
 	args := m.Called(ctx, filters)
 	return args.Get(0).([]model.CreditTransaction), args.Error(1)
 }
 
-func (m *MockCreditTransactionRepository) CountUserTransactions(ctx context.Context, filters dto.TransactionFilters) (int64, error) {
+func (m *MockCreditTransactionRepository) CountTransactions(ctx context.Context, filters dto.TransactionFilters) (int64, error) {
 	args := m.Called(ctx, filters)
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *MockCreditTransactionRepository) GetUserCreditBalance(ctx context.Context, userID uuid.UUID) (*model.UserCreditBalance, error) {
-	args := m.Called(ctx, userID)
+func (m *MockCreditTransactionRepository) GetCreditBalance(ctx context.Context, universalID uuid.UUID) (*model.UserCreditBalance, error) {
+	args := m.Called(ctx, universalID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -41,7 +41,7 @@ func (m *MockCreditTransactionRepository) GetUserCreditBalance(ctx context.Conte
 
 func TestCreditTransactionService_GetUserTransactionHistory(t *testing.T) {
 	logger := zap.NewNop()
-	userID := uuid.New()
+	universalID := uuid.New()
 	ctx := context.Background()
 
 	t.Run("successful transaction retrieval", func(t *testing.T) {
@@ -54,7 +54,7 @@ func TestCreditTransactionService_GetUserTransactionHistory(t *testing.T) {
 		transactions := []model.CreditTransaction{
 			{
 				ID:              1,
-				UniversalID:     userID,
+				UniversalID:     universalID,
 				TransactionType: model.TransactionTypeCreditUsage,
 				Amount:          decimal.NewFromFloat(10.00),
 				BalanceAfter:    decimal.NewFromFloat(90.00),
@@ -63,7 +63,7 @@ func TestCreditTransactionService_GetUserTransactionHistory(t *testing.T) {
 			},
 			{
 				ID:              2,
-				UniversalID:     userID,
+				UniversalID:     universalID,
 				TransactionType: model.TransactionTypeCreditAllocation,
 				Amount:          decimal.NewFromFloat(100.00),
 				BalanceAfter:    decimal.NewFromFloat(100.00),
@@ -73,16 +73,16 @@ func TestCreditTransactionService_GetUserTransactionHistory(t *testing.T) {
 		}
 
 		filters := dto.TransactionFilters{
-			UserID: userID,
+			UserID: universalID,
 			Limit:  20,
 			Offset: 0,
 		}
 
-		mockRepo.On("GetUserTransactions", ctx, filters).Return(transactions, nil)
-		mockRepo.On("CountUserTransactions", ctx, filters).Return(int64(2), nil)
+		mockRepo.On("GetTransactions", ctx, filters).Return(transactions, nil)
+		mockRepo.On("CountTransactions", ctx, filters).Return(int64(2), nil)
 
 		// Execute
-		result, err := service.GetUserTransactionHistory(ctx, userID, dto.TransactionFilters{})
+		result, err := service.GetUserTransactionHistory(ctx, universalID, dto.TransactionFilters{})
 
 		// Assert
 		assert.NoError(t, err)
@@ -102,15 +102,15 @@ func TestCreditTransactionService_GetUserTransactionHistory(t *testing.T) {
 		service := usecase.NewCreditTransactionService(mockRepo, logger)
 
 		filters := dto.TransactionFilters{
-			UserID: userID,
+			UserID: universalID,
 			Limit:  10,
 			Offset: 0,
 		}
 
-		mockRepo.On("GetUserTransactions", ctx, filters).Return([]model.CreditTransaction{}, nil)
-		mockRepo.On("CountUserTransactions", ctx, filters).Return(int64(25), nil)
+		mockRepo.On("GetTransactions", ctx, filters).Return([]model.CreditTransaction{}, nil)
+		mockRepo.On("CountTransactions", ctx, filters).Return(int64(25), nil)
 
-		result, err := service.GetUserTransactionHistory(ctx, userID, dto.TransactionFilters{
+		result, err := service.GetUserTransactionHistory(ctx, universalID, dto.TransactionFilters{
 			Limit:  10,
 			Offset: 0,
 		})
@@ -130,7 +130,7 @@ func TestCreditTransactionService_GetUserTransactionHistory(t *testing.T) {
 		transactions := []model.CreditTransaction{
 			{
 				ID:              1,
-				UniversalID:     userID,
+				UniversalID:     universalID,
 				TransactionType: model.TransactionTypeCreditUsage,
 				Amount:          decimal.NewFromFloat(5.00),
 				BalanceAfter:    decimal.NewFromFloat(95.00),
@@ -140,15 +140,15 @@ func TestCreditTransactionService_GetUserTransactionHistory(t *testing.T) {
 		}
 
 		filters := dto.TransactionFilters{
-			UserID: userID,
+			UserID: universalID,
 			Limit:  20,
 			Offset: 0,
 		}
 
-		mockRepo.On("GetUserTransactions", ctx, filters).Return(transactions, nil)
-		mockRepo.On("CountUserTransactions", ctx, filters).Return(int64(1), nil)
+		mockRepo.On("GetTransactions", ctx, filters).Return(transactions, nil)
+		mockRepo.On("CountTransactions", ctx, filters).Return(int64(1), nil)
 
-		result, err := service.GetUserTransactionHistory(ctx, userID, dto.TransactionFilters{})
+		result, err := service.GetUserTransactionHistory(ctx, universalID, dto.TransactionFilters{})
 
 		assert.NoError(t, err)
 		assert.Equal(t, "This is a very long description that exceeds fi...", result.Transactions[0].Description)
@@ -158,9 +158,9 @@ func TestCreditTransactionService_GetUserTransactionHistory(t *testing.T) {
 	})
 }
 
-func TestCreditTransactionService_GetUserCreditBalance(t *testing.T) {
+func TestCreditTransactionService_GetCreditBalance(t *testing.T) {
 	logger := zap.NewNop()
-	userID := uuid.New()
+	universalID := uuid.New()
 	ctx := context.Background()
 
 	t.Run("successful balance retrieval", func(t *testing.T) {
@@ -168,13 +168,13 @@ func TestCreditTransactionService_GetUserCreditBalance(t *testing.T) {
 		service := usecase.NewCreditTransactionService(mockRepo, logger)
 
 		balance := &model.UserCreditBalance{
-			UniversalID:    userID,
+			UniversalID:    universalID,
 			CurrentBalance: decimal.NewFromFloat(150.50),
 		}
 
-		mockRepo.On("GetUserCreditBalance", ctx, userID).Return(balance, nil)
+		mockRepo.On("GetCreditBalance", ctx, universalID).Return(balance, nil)
 
-		result, err := service.GetUserCreditBalance(ctx, userID)
+		result, err := service.GetCreditBalance(ctx, universalID)
 
 		assert.NoError(t, err)
 		assert.Equal(t, "150.5", result)
@@ -186,9 +186,9 @@ func TestCreditTransactionService_GetUserCreditBalance(t *testing.T) {
 		mockRepo := new(MockCreditTransactionRepository)
 		service := usecase.NewCreditTransactionService(mockRepo, logger)
 
-		mockRepo.On("GetUserCreditBalance", ctx, userID).Return(nil, nil)
+		mockRepo.On("GetCreditBalance", ctx, universalID).Return(nil, nil)
 
-		result, err := service.GetUserCreditBalance(ctx, userID)
+		result, err := service.GetCreditBalance(ctx, universalID)
 
 		assert.NoError(t, err)
 		assert.Equal(t, "0.00", result)

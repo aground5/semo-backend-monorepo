@@ -132,15 +132,15 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
     }
 
     // Extract user_id, email, and payment mode from metadata
-    var userID string
+    var universalID string
     var userEmail string
     var paymentMode string // "subscription" or "payment"
     
     if setupIntent.Metadata != nil {
         if uid, ok := setupIntent.Metadata["user_id"]; ok {
-            userID = uid
+            universalID = uid
             h.logger.Info("Found user_id in setup intent metadata",
-                zap.String("user_id", userID),
+                zap.String("universal_id", universalID),
                 zap.String("setup_intent_id", setupIntent.ID))
         }
         
@@ -165,16 +165,16 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 
 			if paymentMode == "payment" {
         // 일회성 결제일 때만 여기서 CustomerMapping 저장
-        if userID != "" && isValidUUID(userID) && h.customerMappingRepo != nil {
+        if universalID != "" && isValidUUID(universalID) && h.customerMappingRepo != nil {
             customerMapping := &entity.CustomerMapping{
                 StripeCustomerID: customerID,
-                UniversalID:      userID,
+                UniversalID:      universalID,
                 Email:            userEmail,
             }
 
             h.logger.Info("Creating customer mapping from one-time payment",
                 zap.String("customer_id", customerID),
-                zap.String("user_id", userID),
+                zap.String("universal_id", universalID),
                 zap.String("email", userEmail))
 
             // Check if mapping already exists
@@ -183,13 +183,13 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
                 if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
                     h.logger.Error("Failed to save customer mapping",
                         zap.String("customer_id", customerID),
-                        zap.String("user_id", userID),
+                        zap.String("universal_id", universalID),
                         zap.String("email", userEmail),
                         zap.Error(err))
                 } else {
                     h.logger.Info("Customer mapping saved successfully",
                         zap.String("customer_id", customerID),
-                        zap.String("user_id", userID),
+                        zap.String("universal_id", universalID),
                         zap.String("email", userEmail))
                 }
             } else {
@@ -255,13 +255,13 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 
 		if customerID != "" {
 			// Extract user ID from metadata
-			var userID string
+			var universalID string
 			var customerEmail string
 
 			if metadata, ok := rawData["metadata"].(map[string]interface{}); ok {
-				userID, _ = metadata["user_id"].(string)
+				universalID, _ = metadata["user_id"].(string)
 				h.logger.Info("Extracted user ID from subscription metadata",
-					zap.String("user_id", userID),
+					zap.String("universal_id", universalID),
 					zap.String("subscription_id", subscriptionID))
 			} else {
 				h.logger.Warn("No metadata found in subscription data",
@@ -285,11 +285,11 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 				}
 
 				// Also check customer metadata for user_id if not found in subscription
-				if userID == "" {
+				if universalID == "" {
 					if customerMeta, ok := customer["metadata"].(map[string]interface{}); ok {
-						userID, _ = customerMeta["user_id"].(string)
+						universalID, _ = customerMeta["user_id"].(string)
 						h.logger.Info("Extracted user ID from customer metadata",
-							zap.String("user_id", userID),
+							zap.String("universal_id", universalID),
 							zap.String("customer_id", customerID))
 					}
 				}
@@ -311,9 +311,9 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
     }
 
 			// If we have a valid user ID, save customer mapping
-			if userID != "" && isValidUUID(userID) && h.customerMappingRepo != nil {
+			if universalID != "" && isValidUUID(universalID) && h.customerMappingRepo != nil {
 				h.logger.Info("Valid user ID found for subscription",
-					zap.String("user_id", userID),
+					zap.String("universal_id", universalID),
 					zap.String("customer_id", customerID),
 					zap.String("subscription_id", subscriptionID))
 
@@ -322,19 +322,19 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 				if existing == nil {
 					customerMapping := &entity.CustomerMapping{
 						StripeCustomerID: customerID,
-						UniversalID:      userID,
+						UniversalID:      universalID,
 						Email:            customerEmail, // Use the extracted email
 					}
 
 					if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
 						h.logger.Error("Failed to save customer mapping",
 							zap.String("customer_id", customerID),
-							zap.String("user_id", userID),
+							zap.String("universal_id", universalID),
 							zap.Error(err))
 					} else {
 						h.logger.Info("Customer mapping saved from subscription webhook",
 							zap.String("customer_id", customerID),
-							zap.String("user_id", userID),
+							zap.String("universal_id", universalID),
 							zap.String("email", customerEmail))
 					}
 				} else if existing != nil && existing.Email == "" && customerEmail != "" {
@@ -594,7 +594,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 		)
 
 		// Extract user ID from various sources
-		var userID string
+		var universalID string
 		customerID := ""
 
 		// Get customer ID
@@ -605,15 +605,15 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 		// Try to get user ID from invoice metadata first
 		if invoice.Metadata != nil {
 			if uid, ok := invoice.Metadata["user_id"]; ok {
-				userID = uid
+				universalID = uid
 				h.logger.Info("Found user ID in invoice metadata",
-					zap.String("user_id", uid),
+					zap.String("universal_id", uid),
 					zap.String("invoice_id", invoice.ID))
 			}
 		}
 
 		// If not in invoice metadata, try subscription metadata
-		if userID == "" && invoice.Subscription != nil {
+		if universalID == "" && invoice.Subscription != nil {
 			h.logger.Info("Attempting to extract user_id from subscription metadata",
 				zap.String("subscription_id", invoice.Subscription.ID))
 
@@ -643,9 +643,9 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 					// Subscription is expanded object
 					if subMeta, ok := subData["metadata"].(map[string]interface{}); ok {
 						if uid, ok := subMeta["user_id"].(string); ok && isValidUUID(uid) {
-							userID = uid
+							universalID = uid
 							h.logger.Info("Found user ID in subscription metadata",
-								zap.String("user_id", uid),
+								zap.String("universal_id", uid),
 								zap.String("subscription_id", invoice.Subscription.ID))
 						} else {
 							h.logger.Warn("No valid user_id in subscription metadata",
@@ -662,7 +662,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 		}
 
 		// If still no user ID, try customer mapping
-		if (userID == "" || !isValidUUID(userID)) && customerID != "" && h.customerMappingRepo != nil {
+		if (universalID == "" || !isValidUUID(universalID)) && customerID != "" && h.customerMappingRepo != nil {
 			h.logger.Info("Attempting to find user ID from customer mapping",
 				zap.String("customer_id", customerID))
 
@@ -672,21 +672,21 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 					zap.String("customer_id", customerID),
 					zap.Error(err))
 			} else if mapping != nil {
-				userID = mapping.UniversalID
+				universalID = mapping.UniversalID
 				h.logger.Info("Found user ID from customer mapping",
-					zap.String("user_id", userID),
+					zap.String("universal_id", universalID),
 					zap.String("customer_id", customerID))
 			}
 		}
 
 		// Validate user ID - REQUIRED for payment processing
-		if userID == "" || !isValidUUID(userID) {
+		if universalID == "" || !isValidUUID(universalID) {
 			h.logger.Error("CRITICAL: Payment cannot be processed without valid user UUID",
 				zap.String("invoice_id", invoice.ID),
 				zap.String("customer_id", customerID),
 				zap.String("customer_email", invoice.CustomerEmail),
-				zap.String("extracted_user_id", userID),
-				zap.Bool("is_valid_uuid", isValidUUID(userID)),
+				zap.String("extracted_user_id", universalID),
+				zap.Bool("is_valid_uuid", isValidUUID(universalID)),
 				zap.Int64("amount_paid", invoice.AmountPaid))
 
 			// Mark webhook as failed - this will cause Stripe to retry
@@ -699,7 +699,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 		// Save payment to database with validated user ID
 		if h.paymentRepo != nil && invoice.Customer != nil {
 			paymentEntity := &entity.Payment{
-				UniversalID:   userID,
+				UniversalID:   universalID,
 				TransactionID: invoice.ID,
 				Amount:        float64(invoice.AmountPaid) / 100, // Convert cents to currency units
 				Currency:      string(invoice.Currency),
@@ -723,7 +723,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			if err := h.paymentRepo.Create(c.Request().Context(), paymentEntity); err != nil {
 				h.logger.Error("Failed to save payment to database",
 					zap.String("invoice_id", invoice.ID),
-					zap.String("user_id", userID),
+					zap.String("universal_id", universalID),
 					zap.Error(err))
 
 				// Return error to make Stripe retry
@@ -734,7 +734,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 
 			h.logger.Info("Payment saved to database successfully",
 				zap.String("payment_id", paymentEntity.ID),
-				zap.String("user_id", userID),
+				zap.String("universal_id", universalID),
 				zap.Float64("amount", paymentEntity.Amount))
 
 			// CREDIT ALLOCATION ANALYSIS - Check preconditions
@@ -747,13 +747,13 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 					}
 					return 0
 				}()),
-				zap.String("user_id", userID))
+				zap.String("universal_id", universalID))
 
 			// Allocate credits for the payment
 			if h.creditService != nil && invoice.Lines != nil && len(invoice.Lines.Data) > 0 {
 				h.logger.Info("Starting credit allocation process",
 					zap.String("invoice_id", invoice.ID),
-					zap.String("user_id", userID))
+					zap.String("universal_id", universalID))
 
 				// Use the subscription ID we extracted earlier
 				subscriptionID := extractedSubscriptionID
@@ -832,27 +832,27 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 												// Allocate credits using metadata
 												h.logger.Info("ATTEMPTING CREDIT ALLOCATION WITH METADATA",
 													zap.String("invoice_id", invoice.ID),
-													zap.String("user_id", userID),
+													zap.String("universal_id", universalID),
 													zap.Int("credits", credits),
 													zap.String("product_name", productName))
 
 												if err := h.creditService.AllocateCreditsWithMetadata(
 													c.Request().Context(),
-													uuid.MustParse(userID),
+													uuid.MustParse(universalID),
 													invoice.ID,
 													credits,
 													productName,
 												); err != nil {
 													h.logger.Error("CREDIT ALLOCATION FROM METADATA FAILED",
 														zap.String("invoice_id", invoice.ID),
-														zap.String("user_id", userID),
+														zap.String("universal_id", universalID),
 														zap.Int("credits", credits),
 														zap.String("product_name", productName),
 														zap.Error(err))
 												} else {
 													h.logger.Info("CREDIT ALLOCATION FROM METADATA SUCCESSFUL",
 														zap.String("invoice_id", invoice.ID),
-														zap.String("user_id", userID),
+														zap.String("universal_id", universalID),
 														zap.Int("credits", credits),
 														zap.String("product_name", productName))
 												}
@@ -886,27 +886,27 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 										} else {
 											h.logger.Info("ATTEMPTING CREDIT ALLOCATION FROM DATABASE",
 												zap.String("invoice_id", invoice.ID),
-												zap.String("user_id", userID),
+												zap.String("universal_id", universalID),
 												zap.String("subscription_id", subscriptionID),
 												zap.String("price_id", stripePriceID))
 
 											if err := h.creditService.AllocateCreditsForPayment(
 												c.Request().Context(),
-												uuid.MustParse(userID),
+												uuid.MustParse(universalID),
 												invoice.ID,
 												subscriptionID,
 												stripePriceID,
 											); err != nil {
 												h.logger.Error("CREDIT ALLOCATION FROM DATABASE FAILED",
 													zap.String("invoice_id", invoice.ID),
-													zap.String("user_id", userID),
+													zap.String("universal_id", universalID),
 													zap.String("subscription_id", subscriptionID),
 													zap.String("price_id", stripePriceID),
 													zap.Error(err))
 											} else {
 												h.logger.Info("CREDIT ALLOCATION FROM DATABASE SUCCESSFUL",
 													zap.String("invoice_id", invoice.ID),
-													zap.String("user_id", userID),
+													zap.String("universal_id", universalID),
 													zap.String("subscription_id", subscriptionID),
 													zap.String("price_id", stripePriceID))
 											}

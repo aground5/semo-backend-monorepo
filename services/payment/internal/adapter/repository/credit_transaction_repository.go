@@ -27,8 +27,8 @@ func NewCreditTransactionRepository(db *gorm.DB, logger *zap.Logger) repository.
 	}
 }
 
-// GetUserTransactions retrieves a user's credit transactions with filters
-func (r *creditTransactionRepository) GetUserTransactions(ctx context.Context, filters dto.TransactionFilters) ([]model.CreditTransaction, error) {
+// GetTransactions retrieves credit transactions with filters
+func (r *creditTransactionRepository) GetTransactions(ctx context.Context, filters dto.TransactionFilters) ([]model.CreditTransaction, error) {
 	var transactions []model.CreditTransaction
 	
 	query := r.db.WithContext(ctx).
@@ -52,17 +52,17 @@ func (r *creditTransactionRepository) GetUserTransactions(ctx context.Context, f
 	query = query.Limit(filters.Limit).Offset(filters.Offset)
 
 	if err := query.Find(&transactions).Error; err != nil {
-		r.logger.Error("failed to get user transactions",
+		r.logger.Error("failed to get transactions",
 			zap.String("universal_id", filters.UserID.String()),
 			zap.Error(err))
-		return nil, fmt.Errorf("failed to get user transactions: %w", err)
+		return nil, fmt.Errorf("failed to get transactions: %w", err)
 	}
 
 	return transactions, nil
 }
 
-// CountUserTransactions counts the total number of transactions matching the filters
-func (r *creditTransactionRepository) CountUserTransactions(ctx context.Context, filters dto.TransactionFilters) (int64, error) {
+// CountTransactions counts the total number of transactions matching the filters
+func (r *creditTransactionRepository) CountTransactions(ctx context.Context, filters dto.TransactionFilters) (int64, error) {
 	var count int64
 	
 	query := r.db.WithContext(ctx).
@@ -83,31 +83,31 @@ func (r *creditTransactionRepository) CountUserTransactions(ctx context.Context,
 	}
 
 	if err := query.Count(&count).Error; err != nil {
-		r.logger.Error("failed to count user transactions",
+		r.logger.Error("failed to count transactions",
 			zap.String("universal_id", filters.UserID.String()),
 			zap.Error(err))
-		return 0, fmt.Errorf("failed to count user transactions: %w", err)
+		return 0, fmt.Errorf("failed to count transactions: %w", err)
 	}
 
 	return count, nil
 }
 
-// GetUserCreditBalance retrieves the current credit balance for a user
-func (r *creditTransactionRepository) GetUserCreditBalance(ctx context.Context, userID uuid.UUID) (*model.UserCreditBalance, error) {
+// GetCreditBalance retrieves the current credit balance for a universal ID
+func (r *creditTransactionRepository) GetCreditBalance(ctx context.Context, universalID uuid.UUID) (*model.UserCreditBalance, error) {
 	var balance model.UserCreditBalance
 	
 	err := r.db.WithContext(ctx).
-		Where("universal_id = ?", userID).
+		Where("universal_id = ?", universalID).
 		First(&balance).Error
 	
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
-		r.logger.Error("failed to get user credit balance",
-			zap.String("universal_id", userID.String()),
+		r.logger.Error("failed to get universal ID credit balance",
+			zap.String("universal_id", universalID.String()),
 			zap.Error(err))
-		return nil, fmt.Errorf("failed to get user credit balance: %w", err)
+		return nil, fmt.Errorf("failed to get universal ID credit balance: %w", err)
 	}
 
 	return &balance, nil

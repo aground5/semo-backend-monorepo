@@ -51,8 +51,8 @@ func (u *PaymentUsecase) GetPayment(ctx context.Context, id string) (*entity.Pay
 	return u.paymentRepo.GetByID(ctx, id)
 }
 
-func (u *PaymentUsecase) GetUserPayments(ctx context.Context, userID string, page, limit int) (*entity.PaginatedPaymentsResponse, error) {
-	if userID == "" {
+func (u *PaymentUsecase) GetPayments(ctx context.Context, universalID string, page, limit int) (*entity.PaginatedPaymentsResponse, error) {
+	if universalID == "" {
 		return nil, errors.New("user ID is required")
 	}
 
@@ -64,7 +64,7 @@ func (u *PaymentUsecase) GetUserPayments(ctx context.Context, userID string, pag
 	params.Validate()
 
 	// Get paginated payments from repository
-	payments, total, err := u.paymentRepo.GetByUniversalID(ctx, userID, params.Page, params.Limit)
+	payments, total, err := u.paymentRepo.GetByUniversalID(ctx, universalID, params.Page, params.Limit)
 	if err != nil {
 		return nil, err
 	}

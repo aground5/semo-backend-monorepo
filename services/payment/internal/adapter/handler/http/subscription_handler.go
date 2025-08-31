@@ -52,7 +52,7 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 	)
 
 	// Get active subscription for the user
-	activeSub, err := h.subscriptionService.GetActiveSubscriptionForUser(c.Request().Context(), user.UniversalID)
+	activeSub, err := h.subscriptionService.GetActiveSubscriptionForUniversalID(c.Request().Context(), user.UniversalID)
 	if err != nil {
 		if errors.Is(err, domainErrors.ErrNoCustomerMapping) {
 			// Customer mapping doesn't exist - create it lazily
@@ -371,7 +371,7 @@ func (h *SubscriptionHandler) CancelCurrentSubscription(c echo.Context) error {
 	)
 
 	// Cancel the user's active subscription
-	updatedSub, err := h.subscriptionService.CancelSubscriptionForUser(c.Request().Context(), user.UniversalID)
+	updatedSub, err := h.subscriptionService.CancelSubscriptionForUniversalID(c.Request().Context(), user.UniversalID)
 	if err != nil {
 		h.logger.Error("Failed to cancel subscription",
 			zap.String("universal_id", user.UniversalID),

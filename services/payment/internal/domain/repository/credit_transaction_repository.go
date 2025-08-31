@@ -10,12 +10,12 @@ import (
 
 // CreditTransactionRepository defines the interface for credit transaction data operations
 type CreditTransactionRepository interface {
-	// GetUserTransactions retrieves a user's credit transactions with filters
-	GetUserTransactions(ctx context.Context, filters dto.TransactionFilters) ([]model.CreditTransaction, error)
+	// GetTransactions retrieves credit transactions with filters
+	GetTransactions(ctx context.Context, filters dto.TransactionFilters) ([]model.CreditTransaction, error)
 	
-	// CountUserTransactions counts the total number of transactions matching the filters
-	CountUserTransactions(ctx context.Context, filters dto.TransactionFilters) (int64, error)
+	// CountTransactions counts the total number of transactions matching the filters
+	CountTransactions(ctx context.Context, filters dto.TransactionFilters) (int64, error)
 	
-	// GetUserCreditBalance retrieves the current credit balance for a user
-	GetUserCreditBalance(ctx context.Context, userID uuid.UUID) (*model.UserCreditBalance, error)
+	// GetCreditBalance retrieves the current credit balance for a universal ID
+	GetCreditBalance(ctx context.Context, universalID uuid.UUID) (*model.UserCreditBalance, error)
 }
