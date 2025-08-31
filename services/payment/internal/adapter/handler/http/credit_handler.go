@@ -42,7 +42,7 @@ func NewCreditHandler(
 // GetUserCredits handles GET /api/v1/credits
 func (h *CreditHandler) GetUserCredits(c echo.Context) error {
 	// Extract user ID from JWT claims
-	userIDStr, ok := c.Get("user_id").(string)
+	universalIDStr, ok := c.Get("universal_id").(string)
 	if !ok {
 		h.logger.Error("Failed to extract user ID from JWT claims")
 		return c.JSON(http.StatusUnauthorized, map[string]string{
@@ -50,19 +50,19 @@ func (h *CreditHandler) GetUserCredits(c echo.Context) error {
 		})
 	}
 
-	userID, err := uuid.Parse(userIDStr)
+	universalID, err := uuid.Parse(universalIDStr)
 	if err != nil {
-		h.logger.Error("Invalid user ID format", zap.String("user_id", userIDStr), zap.Error(err))
+		h.logger.Error("Invalid user ID format", zap.String("universal_id", universalIDStr), zap.Error(err))
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "invalid user ID format",
 		})
 	}
 
 	// Get user's credit balance
-	balance, err := h.creditService.GetBalance(c.Request().Context(), userID)
+	balance, err := h.creditService.GetBalance(c.Request().Context(), universalID)
 	if err != nil {
 		h.logger.Error("Failed to get user credit balance", 
-			zap.String("user_id", userID.String()),
+			zap.String("universal_id", universalID.String()),
 			zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to retrieve credit balance",
@@ -80,7 +80,7 @@ func (h *CreditHandler) GetUserCredits(c echo.Context) error {
 // GetTransactionHistory handles GET /api/v1/credits/transactions
 func (h *CreditHandler) GetTransactionHistory(c echo.Context) error {
 	// Extract user ID from JWT claims
-	userIDStr, ok := c.Get("user_id").(string)
+	universalIDStr, ok := c.Get("universal_id").(string)
 	if !ok {
 		h.logger.Error("Failed to extract user ID from JWT claims")
 		return c.JSON(http.StatusUnauthorized, map[string]string{
@@ -88,9 +88,9 @@ func (h *CreditHandler) GetTransactionHistory(c echo.Context) error {
 		})
 	}
 
-	userID, err := uuid.Parse(userIDStr)
+	universalID, err := uuid.Parse(universalIDStr)
 	if err != nil {
-		h.logger.Error("Invalid user ID format", zap.String("user_id", userIDStr), zap.Error(err))
+		h.logger.Error("Invalid user ID format", zap.String("universal_id", universalIDStr), zap.Error(err))
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "invalid user ID format",
 		})
@@ -98,7 +98,7 @@ func (h *CreditHandler) GetTransactionHistory(c echo.Context) error {
 
 	// Parse query parameters
 	filters := dto.TransactionFilters{
-		UserID: userID,
+		UserID: universalID,
 	}
 
 	// Parse limit
@@ -163,10 +163,10 @@ func (h *CreditHandler) GetTransactionHistory(c echo.Context) error {
 	}
 
 	// Get transaction history
-	response, err := h.creditTransactionService.GetUserTransactionHistory(c.Request().Context(), userID, filters)
+	response, err := h.creditTransactionService.GetUserTransactionHistory(c.Request().Context(), universalID, filters)
 	if err != nil {
 		h.logger.Error("Failed to get transaction history",
-			zap.String("user_id", userID.String()),
+			zap.String("universal_id", universalID.String()),
 			zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to retrieve transaction history",
@@ -179,7 +179,7 @@ func (h *CreditHandler) GetTransactionHistory(c echo.Context) error {
 // UseCredits handles POST /api/v1/credits
 func (h *CreditHandler) UseCredits(c echo.Context) error {
 	// Extract user ID from JWT claims
-	userIDStr, ok := c.Get("user_id").(string)
+	universalIDStr, ok := c.Get("universal_id").(string)
 	if !ok {
 		h.logger.Error("Failed to extract user ID from JWT claims")
 		return c.JSON(http.StatusUnauthorized, map[string]string{
@@ -187,9 +187,9 @@ func (h *CreditHandler) UseCredits(c echo.Context) error {
 		})
 	}
 
-	userID, err := uuid.Parse(userIDStr)
+	universalID, err := uuid.Parse(universalIDStr)
 	if err != nil {
-		h.logger.Error("Invalid user ID format", zap.String("user_id", userIDStr), zap.Error(err))
+		h.logger.Error("Invalid user ID format", zap.String("universal_id", universalIDStr), zap.Error(err))
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "invalid user ID format",
 		})
@@ -281,7 +281,7 @@ func (h *CreditHandler) UseCredits(c echo.Context) error {
 	// Call service to use credits
 	transaction, err := h.creditService.UseCredits(
 		c.Request().Context(),
-		userID,
+		universalID,
 		amount,
 		req.FeatureName,
 		req.Description,
@@ -295,7 +295,7 @@ func (h *CreditHandler) UseCredits(c echo.Context) error {
 		var insufficientErr *customErr.InsufficientBalanceError
 		if errors.As(err, &insufficientErr) {
 			h.logger.Warn("Insufficient credit balance",
-				zap.String("user_id", userID.String()),
+				zap.String("universal_id", universalID.String()),
 				zap.String("requested", amount.String()),
 				zap.String("available", insufficientErr.Available.String()))
 			return c.JSON(http.StatusPaymentRequired, map[string]string{
@@ -319,7 +319,7 @@ func (h *CreditHandler) UseCredits(c echo.Context) error {
 		if idempotencyKey != nil {
 			// Log as warning since it might be a retry
 			h.logger.Warn("Possible duplicate credit usage attempt",
-				zap.String("user_id", userID.String()),
+				zap.String("universal_id", universalID.String()),
 				zap.String("idempotency_key", idempotencyKey.String()),
 				zap.Error(err))
 			// Could be a unique constraint violation
@@ -331,7 +331,7 @@ func (h *CreditHandler) UseCredits(c echo.Context) error {
 
 		// Generic error
 		h.logger.Error("Failed to use credits",
-			zap.String("user_id", userID.String()),
+			zap.String("universal_id", universalID.String()),
 			zap.String("amount", amount.String()),
 			zap.String("feature", req.FeatureName),
 			zap.Error(err))
@@ -349,7 +349,7 @@ func (h *CreditHandler) UseCredits(c echo.Context) error {
 	}
 
 	h.logger.Info("Credits used successfully",
-		zap.String("user_id", userID.String()),
+		zap.String("universal_id", universalID.String()),
 		zap.Int64("transaction_id", transaction.ID),
 		zap.String("amount", amount.String()),
 		zap.String("feature", req.FeatureName),

@@ -38,9 +38,9 @@ func NewCreditService(
 }
 
 // AllocateCreditsForPayment allocates credits based on a successful payment
-func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, userID uuid.UUID, invoiceID string, subscriptionID string, stripePriceID string) error {
+func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, universalID uuid.UUID, invoiceID string, subscriptionID string, stripePriceID string) error {
 	s.logger.Info("=== AllocateCreditsForPayment START ===",
-		zap.String("user_id", userID.String()),
+		zap.String("universal_id", universalID.String()),
 		zap.String("invoice_id", invoiceID),
 		zap.String("subscription_id", subscriptionID),
 		zap.String("price_id", stripePriceID))
@@ -58,7 +58,7 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, userID uu
 	if existingTx != nil {
 		s.logger.Info("Credits already allocated for invoice (idempotency check passed)",
 			zap.String("invoice_id", invoiceID),
-			zap.String("user_id", userID.String()),
+			zap.String("universal_id", universalID.String()),
 			zap.String("existing_tx_id", fmt.Sprintf("%d", existingTx.ID)))
 		return nil
 	} else {
@@ -91,15 +91,15 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, userID uu
 	description := fmt.Sprintf("Credit allocation for %s subscription", plan.DisplayName)
 
 	s.logger.Info("CALLING creditRepo.AllocateCredits",
-		zap.String("user_id", userID.String()),
+		zap.String("universal_id", universalID.String()),
 		zap.String("amount", amount.String()),
 		zap.String("description", description),
 		zap.String("reference_id", invoiceID))
 
-	balance, transaction, err := s.creditRepo.AllocateCredits(ctx, userID, amount, description, invoiceID)
+	balance, transaction, err := s.creditRepo.AllocateCredits(ctx, universalID, amount, description, invoiceID)
 	if err != nil {
 		s.logger.Error("CREDIT ALLOCATION FAILED IN REPOSITORY",
-			zap.String("user_id", userID.String()),
+			zap.String("universal_id", universalID.String()),
 			zap.String("invoice_id", invoiceID),
 			zap.String("amount", amount.String()),
 			zap.Error(err))
@@ -107,7 +107,7 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, userID uu
 	}
 
 	s.logger.Info("CREDIT ALLOCATION SUCCESSFUL",
-		zap.String("user_id", userID.String()),
+		zap.String("universal_id", universalID.String()),
 		zap.String("invoice_id", invoiceID),
 		zap.String("subscription_id", subscriptionID),
 		zap.Int("credits", plan.CreditsPerCycle),
@@ -119,9 +119,9 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, userID uu
 }
 
 // AllocateCreditsWithMetadata allocates credits based on product metadata
-func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, userID uuid.UUID, invoiceID string, creditsPerCycle int, productName string) error {
+func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, universalID uuid.UUID, invoiceID string, creditsPerCycle int, productName string) error {
 	s.logger.Info("=== AllocateCreditsWithMetadata START ===",
-		zap.String("user_id", userID.String()),
+		zap.String("universal_id", universalID.String()),
 		zap.String("invoice_id", invoiceID),
 		zap.Int("credits_per_cycle", creditsPerCycle),
 		zap.String("product_name", productName))
@@ -139,7 +139,7 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, userID 
 	if existingTx != nil {
 		s.logger.Info("Credits already allocated for invoice (idempotency check passed)",
 			zap.String("invoice_id", invoiceID),
-			zap.String("user_id", userID.String()),
+			zap.String("universal_id", universalID.String()),
 			zap.String("existing_tx_id", fmt.Sprintf("%d", existingTx.ID)))
 		return nil
 	} else {
@@ -151,15 +151,15 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, userID 
 	description := fmt.Sprintf("Credit allocation for %s subscription payment", productName)
 
 	s.logger.Info("CALLING creditRepo.AllocateCredits with metadata",
-		zap.String("user_id", userID.String()),
+		zap.String("universal_id", universalID.String()),
 		zap.String("amount", amount.String()),
 		zap.String("description", description),
 		zap.String("reference_id", invoiceID))
 
-	balance, transaction, err := s.creditRepo.AllocateCredits(ctx, userID, amount, description, invoiceID)
+	balance, transaction, err := s.creditRepo.AllocateCredits(ctx, universalID, amount, description, invoiceID)
 	if err != nil {
 		s.logger.Error("CREDIT ALLOCATION WITH METADATA FAILED IN REPOSITORY",
-			zap.String("user_id", userID.String()),
+			zap.String("universal_id", universalID.String()),
 			zap.String("invoice_id", invoiceID),
 			zap.String("amount", amount.String()),
 			zap.Error(err))
@@ -167,7 +167,7 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, userID 
 	}
 
 	s.logger.Info("CREDIT ALLOCATION WITH METADATA SUCCESSFUL",
-		zap.String("user_id", userID.String()),
+		zap.String("universal_id", universalID.String()),
 		zap.String("invoice_id", invoiceID),
 		zap.Int("credits", creditsPerCycle),
 		zap.String("product", productName),
@@ -179,8 +179,8 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, userID 
 }
 
 // GetBalance retrieves the current credit balance for a user
-func (s *CreditService) GetBalance(ctx context.Context, userID uuid.UUID) (*model.UserCreditBalance, error) {
-	balance, err := s.creditRepo.GetBalance(ctx, userID)
+func (s *CreditService) GetBalance(ctx context.Context, universalID uuid.UUID) (*model.UserCreditBalance, error) {
+	balance, err := s.creditRepo.GetBalance(ctx, universalID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get balance: %w", err)
 	}
@@ -189,17 +189,17 @@ func (s *CreditService) GetBalance(ctx context.Context, userID uuid.UUID) (*mode
 }
 
 // UseCredits deducts credits for a specific feature
-func (s *CreditService) UseCredits(ctx context.Context, userID uuid.UUID, amount decimal.Decimal, featureName string, description string, usageMetadata []byte, idempotencyKey *uuid.UUID) (*model.CreditTransaction, error) {
+func (s *CreditService) UseCredits(ctx context.Context, universalID uuid.UUID, amount decimal.Decimal, featureName string, description string, usageMetadata []byte, idempotencyKey *uuid.UUID) (*model.CreditTransaction, error) {
 	// For now, we'll use the existing UseCredits without idempotency key support
 	// TODO: Add idempotency key support to repository layer
 	
 	// First get the current balance to provide in error if insufficient
-	currentBalance, err := s.creditRepo.GetBalance(ctx, userID)
+	currentBalance, err := s.creditRepo.GetBalance(ctx, universalID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get balance: %w", err)
 	}
 
-	balance, transaction, err := s.creditRepo.UseCredits(ctx, userID, amount, description, featureName)
+	balance, transaction, err := s.creditRepo.UseCredits(ctx, universalID, amount, description, featureName)
 	if err != nil {
 		// Check if it's an insufficient balance error
 		if strings.Contains(err.Error(), "insufficient credit balance") {
@@ -210,7 +210,7 @@ func (s *CreditService) UseCredits(ctx context.Context, userID uuid.UUID, amount
 
 	// Log the successful usage
 	s.logger.Info("Credits used successfully",
-		zap.String("user_id", userID.String()),
+		zap.String("universal_id", universalID.String()),
 		zap.String("amount", amount.String()),
 		zap.String("feature", featureName),
 		zap.String("balance_after", balance.CurrentBalance.String()),

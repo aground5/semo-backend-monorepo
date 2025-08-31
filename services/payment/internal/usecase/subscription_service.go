@@ -33,9 +33,9 @@ func NewSubscriptionService(
 }
 
 // GetActiveSubscriptionForUser finds the active subscription for a given user ID
-func (s *SubscriptionService) GetActiveSubscriptionForUser(ctx context.Context, userID string) (*stripe.Subscription, error) {
+func (s *SubscriptionService) GetActiveSubscriptionForUniversalID(ctx context.Context, universalID string) (*stripe.Subscription, error) {
 	// Look up customer mapping
-	customerMapping, err := s.customerMappingRepo.GetByUniversalID(ctx, userID)
+	customerMapping, err := s.customerMappingRepo.GetByUniversalID(ctx, universalID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get customer mapping: %w", err)
 	}
@@ -97,9 +97,9 @@ func (s *SubscriptionService) GetActiveSubscriptionForCustomer(ctx context.Conte
 }
 
 // CancelSubscriptionForUser cancels the active subscription for a given user ID
-func (s *SubscriptionService) CancelSubscriptionForUser(ctx context.Context, userID string) (*stripe.Subscription, error) {
+func (s *SubscriptionService) CancelSubscriptionForUniversalID(ctx context.Context, universalID string) (*stripe.Subscription, error) {
 	// Get the active subscription
-	activeSub, err := s.GetActiveSubscriptionForUser(ctx, userID)
+	activeSub, err := s.GetActiveSubscriptionForUniversalID(ctx, universalID)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func (s *SubscriptionService) CancelSubscriptionForUser(ctx context.Context, use
 
 	s.logger.Info("Subscription canceled successfully",
 		zap.String("subscription_id", updatedSub.ID),
-		zap.String("user_id", userID),
+		zap.String("universal_id", universalID),
 		zap.Bool("cancel_at_period_end", updatedSub.CancelAtPeriodEnd),
 	)
 

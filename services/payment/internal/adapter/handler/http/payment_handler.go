@@ -22,7 +22,7 @@ func NewPaymentHandler(usecase *usecase.PaymentUsecase, logger *zap.Logger) *Pay
 	}
 }
 
-func (h *PaymentHandler) GetUserPayments(c echo.Context) error {
+func (h *PaymentHandler) GetPayments(c echo.Context) error {
 	// Get authenticated user from JWT
 	user, err := auth.RequireAuth(c)
 	if err != nil {
@@ -78,7 +78,7 @@ func (h *PaymentHandler) GetUserPayments(c echo.Context) error {
 		zap.Int("limit", limit),
 	)
 
-	response, err := h.usecase.GetUserPayments(c.Request().Context(), user.UniversalID, page, limit)
+	response, err := h.usecase.GetPayments(c.Request().Context(), user.UniversalID, page, limit)
 	if err != nil {
 		h.logger.Error("Failed to get user payments",
 			zap.String("universal_id", user.UniversalID),

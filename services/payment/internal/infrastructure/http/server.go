@@ -134,7 +134,7 @@ func (s *Server) setupRoutes() {
 	protected.GET("/checkout/session/:sessionId", checkoutHandler.CheckSessionStatus)
 
 	// Payment routes (require authentication)
-	protected.GET("/payments", paymentHandler.GetUserPayments)
+	protected.GET("/payments", paymentHandler.GetPayments)
 	protected.GET("/payments/:id", paymentHandler.GetPaymentByTxID)
 
 	// Credit routes (require authentication)
