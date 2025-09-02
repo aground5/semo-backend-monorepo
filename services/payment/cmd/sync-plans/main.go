@@ -47,7 +47,7 @@ func main() {
 	}
 
 	// Initialize repositories
-	repos := database.NewRepositories(db, logger)
+	repos := database.NewRepositories(db, &cfg.Service.Supabase, logger)
 
 	// Create plan sync service
 	planSync := usecase.NewPlanSyncService(repos.Plan, logger)

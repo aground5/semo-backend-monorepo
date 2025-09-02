@@ -14,4 +14,5 @@ type ServiceConfig struct {
 type SupabaseConfig struct {
 	JWTSecret  string `yaml:"jwt_secret"`
 	ProjectURL string `yaml:"project_url"`
+	APIKey     string `yaml:"api_key"`
 }

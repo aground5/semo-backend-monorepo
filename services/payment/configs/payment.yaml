@@ -9,6 +9,8 @@ service:
   supabase:
     jwt_secret: REMOVED_SUPABASE_JWT_SECRET
     project_url: https://fjctbfwohrqdmrdyqbig.supabase.co
+    # Using service_role key for server-side workspace verification
+    api_key: REMOVED_SUPABASE_SERVICE_KEY
 
 server:
   http:
