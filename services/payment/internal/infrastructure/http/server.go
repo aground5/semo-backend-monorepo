@@ -89,6 +89,7 @@ func (s *Server) setupRoutes() {
 	subscriptionService := usecase.NewSubscriptionService(s.repos.CustomerMapping, s.repos.Subscription, s.logger)
 	creditService := usecase.NewCreditService(s.repos.Credit, s.repos.Subscription, s.repos.Plan, s.logger)
 	creditTransactionService := usecase.NewCreditTransactionService(s.repos.CreditTransaction, s.logger)
+	workspaceVerificationService := usecase.NewWorkspaceVerificationService(s.repos.WorkspaceVerification, s.logger)
 
 	// Initialize handlers
 	plansHandler := handlers.NewPlansHandler(s.logger, s.repos.Plan)
@@ -101,8 +102,9 @@ func (s *Server) setupRoutes() {
 
 	// JWT middleware configuration
 	jwtConfig := auth.JWTConfig{
-		Secret: s.config.Service.Supabase.JWTSecret,
-		Logger: s.logger,
+		Secret:                       s.config.Service.Supabase.JWTSecret,
+		Logger:                       s.logger,
+		WorkspaceVerificationService: workspaceVerificationService,
 		SkipPaths: []string{
 			"/health",
 			"/webhook",

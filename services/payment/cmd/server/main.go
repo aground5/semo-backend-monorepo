@@ -45,7 +45,7 @@ func main() {
 	}
 
 	// Initialize repositories
-	repos := database.NewRepositories(db, logger)
+	repos := database.NewRepositories(db, &cfg.Service.Supabase, logger)
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
