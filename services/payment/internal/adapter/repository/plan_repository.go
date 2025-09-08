@@ -76,7 +76,7 @@ func (r *planRepository) GetByPriceID(ctx context.Context, priceID string) (*mod
 	var plan model.SubscriptionPlan
 
 	err := r.db.WithContext(ctx).
-		Where("stripe_price_id = ?", priceID).
+		Where("provider_price_id = ?", priceID).
 		First(&plan).Error
 
 	if err != nil {
@@ -97,7 +97,7 @@ func (r *planRepository) GetByProductID(ctx context.Context, productID string) (
 	var plans []*model.SubscriptionPlan
 
 	err := r.db.WithContext(ctx).
-		Where("stripe_product_id = ?", productID).
+		Where("provider_product_id = ?", productID).
 		Find(&plans).Error
 
 	if err != nil {
@@ -115,7 +115,7 @@ func (r *planRepository) Create(ctx context.Context, plan *model.SubscriptionPla
 	err := r.db.WithContext(ctx).Create(plan).Error
 	if err != nil {
 		r.logger.Error("Failed to create plan",
-			zap.String("price_id", plan.StripePriceID),
+			zap.String("price_id", plan.ProviderPriceID),
 			zap.Error(err))
 		return fmt.Errorf("failed to create plan: %w", err)
 	}
@@ -127,12 +127,12 @@ func (r *planRepository) Create(ctx context.Context, plan *model.SubscriptionPla
 func (r *planRepository) Update(ctx context.Context, plan *model.SubscriptionPlan) error {
 	err := r.db.WithContext(ctx).
 		Model(&model.SubscriptionPlan{}).
-		Where("stripe_price_id = ?", plan.StripePriceID).
+		Where("provider_price_id = ?", plan.ProviderPriceID).
 		Updates(plan).Error
 
 	if err != nil {
 		r.logger.Error("Failed to update plan",
-			zap.String("price_id", plan.StripePriceID),
+			zap.String("price_id", plan.ProviderPriceID),
 			zap.Error(err))
 		return fmt.Errorf("failed to update plan: %w", err)
 	}
@@ -144,7 +144,7 @@ func (r *planRepository) Update(ctx context.Context, plan *model.SubscriptionPla
 func (r *planRepository) Delete(ctx context.Context, priceID string) error {
 	err := r.db.WithContext(ctx).
 		Model(&model.SubscriptionPlan{}).
-		Where("stripe_price_id = ?", priceID).
+		Where("provider_price_id = ?", priceID).
 		Update("is_active", false).Error
 
 	if err != nil {
@@ -160,7 +160,7 @@ func (r *planRepository) Delete(ctx context.Context, priceID string) error {
 // Upsert creates or updates a subscription plan
 func (r *planRepository) Upsert(ctx context.Context, plan *model.SubscriptionPlan) error {
 	// Check if plan exists
-	existing, err := r.GetByPriceID(ctx, plan.StripePriceID)
+	existing, err := r.GetByPriceID(ctx, plan.ProviderPriceID)
 	if err != nil {
 		return err
 	}

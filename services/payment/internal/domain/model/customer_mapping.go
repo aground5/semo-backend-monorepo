@@ -9,7 +9,7 @@ import (
 // CustomerMapping maps Stripe customer IDs to universal IDs
 type CustomerMapping struct {
 	ID               int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	StripeCustomerID string    `gorm:"unique;not null;size:100;index" json:"stripe_customer_id"`
+	ProviderCustomerID string    `gorm:"column:provider_customer_id;unique;not null;size:100;index" json:"provider_customer_id"`
 	UniversalID      uuid.UUID `gorm:"column:universal_id;type:uuid;not null;index" json:"universal_id"`
 	CustomerEmail    string    `gorm:"size:255" json:"customer_email"`
 	CreatedAt        time.Time `gorm:"default:now()" json:"created_at"`

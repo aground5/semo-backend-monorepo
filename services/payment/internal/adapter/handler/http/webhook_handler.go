@@ -706,18 +706,18 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 				Status:        entity.PaymentStatusCompleted,
 				Method:        entity.PaymentMethodCard,
 				Metadata: map[string]interface{}{
-					"stripe_invoice_id":  invoice.ID,
-					"stripe_customer_id": invoice.Customer.ID,
+					"provider_invoice_id":  invoice.ID,
+					"provider_customer_id": invoice.Customer.ID,
 				},
 			}
 
 			if extractedSubscriptionID != "" {
-				paymentEntity.Metadata["stripe_subscription_id"] = extractedSubscriptionID
+				paymentEntity.Metadata["provider_subscription_id"] = extractedSubscriptionID
 			}
 
 			if invoice.PaymentIntent != nil {
 				paymentEntity.TransactionID = invoice.PaymentIntent.ID
-				paymentEntity.Metadata["stripe_payment_intent_id"] = invoice.PaymentIntent.ID
+				paymentEntity.Metadata["provider_payment_intent_id"] = invoice.PaymentIntent.ID
 			}
 
 			if err := h.paymentRepo.Create(c.Request().Context(), paymentEntity); err != nil {
