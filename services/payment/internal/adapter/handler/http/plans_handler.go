@@ -40,7 +40,7 @@ func (h *PlansHandler) GetSubscriptionPlans(c echo.Context) error {
 	var plans []entity.Plan
 	for _, dbPlan := range dbPlans {
 		plan := entity.Plan{
-			ID:            dbPlan.StripePriceID,
+			ID:            dbPlan.ProviderPriceID,
 			Name:          dbPlan.DisplayName,
 			Description:   "",                            // Could be added to features
 			Amount:        int64(dbPlan.CreditsPerCycle), // This should be price amount, not credits
@@ -106,7 +106,7 @@ func (h *PlansHandler) GetOneTimePlans(c echo.Context) error {
 	var plans []entity.Plan
 	for _, dbPlan := range dbPlans {
 		plan := entity.Plan{
-			ID:          dbPlan.StripePriceID,
+			ID:          dbPlan.ProviderPriceID,
 			Name:        dbPlan.DisplayName,
 			Description: "",                            // Could be added to features
 			Amount:      int64(dbPlan.CreditsPerCycle), // This should be price amount, not credits
@@ -165,7 +165,7 @@ func (h *PlansHandler) GetPlans(c echo.Context) error {
 	var plans []entity.Plan
 	for _, dbPlan := range dbPlans {
 		plan := entity.Plan{
-			ID:          dbPlan.StripePriceID,
+			ID:          dbPlan.ProviderPriceID,
 			Name:        dbPlan.DisplayName,
 			Description: "",                            // Could be added to features
 			Amount:      int64(dbPlan.CreditsPerCycle), // This should be price amount, not credits

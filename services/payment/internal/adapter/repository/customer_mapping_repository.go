@@ -28,7 +28,7 @@ func (r *customerMappingRepository) modelToEntity(m *model.CustomerMapping) *ent
 	}
 	return &entity.CustomerMapping{
 		ID:               m.ID,
-		StripeCustomerID: m.StripeCustomerID,
+		StripeCustomerID: m.ProviderCustomerID,
 		UniversalID:      m.UniversalID.String(),
 		Email:            m.CustomerEmail,
 		CreatedAt:        m.CreatedAt,
@@ -49,7 +49,7 @@ func (r *customerMappingRepository) entityToModel(e *entity.CustomerMapping) (*m
 
 	return &model.CustomerMapping{
 		ID:               e.ID,
-		StripeCustomerID: e.StripeCustomerID,
+		ProviderCustomerID: e.StripeCustomerID,
 		UniversalID:      userUUID,
 		CustomerEmail:    e.Email,
 		CreatedAt:        e.CreatedAt,
@@ -67,7 +67,7 @@ func (r *customerMappingRepository) Create(ctx context.Context, mapping *entity.
 
 func (r *customerMappingRepository) GetByStripeCustomerID(ctx context.Context, stripeCustomerID string) (*entity.CustomerMapping, error) {
 	var mapping model.CustomerMapping
-	err := r.db.WithContext(ctx).Where("stripe_customer_id = ?", stripeCustomerID).First(&mapping).Error
+	err := r.db.WithContext(ctx).Where("provider_customer_id = ?", stripeCustomerID).First(&mapping).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil

@@ -15,8 +15,8 @@ const (
 // SubscriptionPlan represents a subscription plan
 type SubscriptionPlan struct {
 	ID              int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	StripePriceID   string    `gorm:"unique;not null;size:100" json:"stripe_price_id"`
-	StripeProductID string    `gorm:"not null;size:100" json:"stripe_product_id"`
+	ProviderPriceID   string    `gorm:"column:provider_price_id;unique;not null;size:100" json:"provider_price_id"`
+	ProviderProductID string    `gorm:"column:provider_product_id;not null;size:100" json:"provider_product_id"`
 	DisplayName     string    `gorm:"not null;size:200" json:"display_name"`
 	Type            string    `gorm:"not null;size:20;default:'subscription'" json:"type"` // 'subscription' or 'one_time'
 	CreditsPerCycle int       `gorm:"not null" json:"credits_per_cycle"`

@@ -34,7 +34,7 @@ func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment)
 
 	paymentModel := &model.Payment{
 		UniversalID:           universalID,
-		StripePaymentIntentID: &payment.TransactionID,
+		ProviderPaymentIntentID: &payment.TransactionID,
 		AmountCents:           int(payment.Amount * 100), // Convert to cents
 		Currency:              payment.Currency,
 		Status:                string(payment.Status),
@@ -130,7 +130,7 @@ func (r *paymentRepository) GetByTransactionID(ctx context.Context, transactionI
 	var payment model.Payment
 
 	err := r.db.WithContext(ctx).
-		Where("stripe_payment_intent_id = ?", transactionID).
+		Where("provider_payment_intent_id = ?", transactionID).
 		First(&payment).Error
 
 	if err != nil {
@@ -246,8 +246,8 @@ func (r *paymentRepository) modelToEntity(m *model.Payment) *entity.Payment {
 		UpdatedAt: m.UpdatedAt,
 	}
 
-	if m.StripePaymentIntentID != nil {
-		e.TransactionID = *m.StripePaymentIntentID
+	if m.ProviderPaymentIntentID != nil {
+		e.TransactionID = *m.ProviderPaymentIntentID
 	}
 
 	if m.PaymentMethodType != nil {
@@ -256,8 +256,8 @@ func (r *paymentRepository) modelToEntity(m *model.Payment) *entity.Payment {
 
 	// Convert metadata if needed
 	e.Metadata = make(map[string]interface{})
-	if m.StripePaymentData != nil {
-		for k, v := range m.StripePaymentData {
+	if m.ProviderPaymentData != nil {
+		for k, v := range m.ProviderPaymentData {
 			e.Metadata[k] = v
 		}
 	}

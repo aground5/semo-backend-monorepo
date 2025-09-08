@@ -38,7 +38,7 @@ func (r *subscriptionRepository) GetByCustomerID(ctx context.Context, customerID
 
 	err := r.db.WithContext(ctx).
 		Preload("Plan").
-		Where("stripe_customer_id = ? AND status = ?", customerID, model.SubscriptionStatusActive).
+		Where("provider_customer_id = ? AND status = ?", customerID, model.SubscriptionStatusActive).
 		First(&sub).Error
 
 	if err != nil {
@@ -60,7 +60,7 @@ func (r *subscriptionRepository) GetByID(ctx context.Context, subscriptionID str
 
 	err := r.db.WithContext(ctx).
 		Preload("Plan").
-		Where("stripe_subscription_id = ?", subscriptionID).
+		Where("provider_subscription_id = ?", subscriptionID).
 		First(&sub).Error
 
 	if err != nil {
@@ -99,7 +99,7 @@ func (r *subscriptionRepository) Update(ctx context.Context, subscription *entit
 	// First check if subscription exists
 	var existing model.Subscription
 	err := r.db.WithContext(ctx).
-		Where("stripe_subscription_id = ?", subscription.ID).
+		Where("provider_subscription_id = ?", subscription.ID).
 		First(&existing).Error
 
 	if err != nil {
@@ -123,7 +123,7 @@ func (r *subscriptionRepository) Update(ctx context.Context, subscription *entit
 
 	err = r.db.WithContext(ctx).
 		Model(&model.Subscription{}).
-		Where("stripe_subscription_id = ?", subscription.ID).
+		Where("provider_subscription_id = ?", subscription.ID).
 		Updates(updates).Error
 
 	if err != nil {
@@ -142,7 +142,7 @@ func (r *subscriptionRepository) Cancel(ctx context.Context, subscriptionID stri
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// First, get the subscription to retrieve user information
 		var subscription model.Subscription
-		err := tx.Where("stripe_subscription_id = ?", subscriptionID).First(&subscription).Error
+		err := tx.Where("provider_subscription_id = ?", subscriptionID).First(&subscription).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				r.logger.Error("Subscription not found for cancellation",
@@ -158,7 +158,7 @@ func (r *subscriptionRepository) Cancel(ctx context.Context, subscriptionID stri
 		// Update subscription status
 		now := time.Now()
 		err = tx.Model(&model.Subscription{}).
-			Where("stripe_subscription_id = ?", subscriptionID).
+			Where("provider_subscription_id = ?", subscriptionID).
 			Updates(map[string]interface{}{
 				"status":      model.SubscriptionStatusInactive,
 				"canceled_at": &now,
@@ -275,8 +275,8 @@ func (r *subscriptionRepository) modelToEntity(m *model.Subscription) *entity.Su
 	}
 
 	e := &entity.Subscription{
-		ID:                *m.StripeSubscriptionID,
-		CustomerID:        m.StripeCustomerID,
+		ID:                *m.ProviderSubscriptionID,
+		CustomerID:        m.ProviderCustomerID,
 		Status:            string(m.Status),
 		CurrentPeriodEnd:  m.CurrentPeriodEnd,
 		CancelAtPeriodEnd: m.CanceledAt != nil,
@@ -311,14 +311,14 @@ func (r *subscriptionRepository) entityToModel(ctx context.Context, e *entity.Su
 	customerMapping, err := r.customerMappingRepo.GetByStripeCustomerID(ctx, e.CustomerID)
 	if err != nil {
 		r.logger.Error("Failed to get customer mapping",
-			zap.String("stripe_customer_id", e.CustomerID),
+			zap.String("provider_customer_id", e.CustomerID),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to get customer mapping: %w", err)
 	}
 
 	if customerMapping == nil {
 		r.logger.Error("Customer mapping not found",
-			zap.String("stripe_customer_id", e.CustomerID))
+			zap.String("provider_customer_id", e.CustomerID))
 		return nil, fmt.Errorf("customer mapping not found for stripe customer ID: %s", e.CustomerID)
 	}
 
@@ -333,8 +333,8 @@ func (r *subscriptionRepository) entityToModel(ctx context.Context, e *entity.Su
 
 	m := &model.Subscription{
 		UniversalID:          universalID,
-		StripeCustomerID:     e.CustomerID,
-		StripeSubscriptionID: &e.ID,
+		ProviderCustomerID:     e.CustomerID,
+		ProviderSubscriptionID: &e.ID,
 		PlanID:               e.PlanID,  // PlanID 매핑 추가
 		Status:               r.mapEntityStatus(e.Status),
 		CurrentPeriodStart:   e.CreatedAt,

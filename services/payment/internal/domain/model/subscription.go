@@ -38,8 +38,8 @@ func (s SubscriptionStatus) Value() (driver.Value, error) {
 type Subscription struct {
 	ID                     int64              `gorm:"primaryKey;autoIncrement" json:"id"`
 	UniversalID            uuid.UUID          `gorm:"column:universal_id;type:uuid;not null" json:"universal_id"`
-	StripeCustomerID       string             `gorm:"not null;size:100" json:"stripe_customer_id"`
-	StripeSubscriptionID   *string            `gorm:"unique;size:100" json:"stripe_subscription_id,omitempty"`
+	ProviderCustomerID       string             `gorm:"column:provider_customer_id;not null;size:100" json:"provider_customer_id"`
+	ProviderSubscriptionID   *string            `gorm:"column:provider_subscription_id;unique;size:100" json:"provider_subscription_id,omitempty"`
 	PlanID                 *string            `gorm:"not null;size:100" json:"plan_id,omitempty"`
 	Status                 SubscriptionStatus `gorm:"type:subscription_status;not null;default:'active'" json:"status"`
 	CurrentPeriodStart     time.Time          `gorm:"not null" json:"current_period_start"`
@@ -50,12 +50,12 @@ type Subscription struct {
 	Currency               string             `gorm:"size:3" json:"currency"`
 	Interval               string             `gorm:"size:20" json:"interval"`
 	IntervalCount          int64              `json:"interval_count"`
-	StripeSubscriptionData JSONB              `gorm:"type:jsonb" json:"stripe_subscription_data,omitempty"`
+	ProviderSubscriptionData JSONB              `gorm:"column:provider_subscription_data;type:jsonb" json:"provider_subscription_data,omitempty"`
 	CreatedAt              time.Time          `gorm:"default:now()" json:"created_at"`
 	UpdatedAt              time.Time          `gorm:"default:now()" json:"updated_at"`
 
 	// Relations
-	Plan *SubscriptionPlan `gorm:"foreignKey:PlanID;references:StripeProductID" json:"plan,omitempty"`
+	Plan *SubscriptionPlan `gorm:"foreignKey:PlanID;references:ProviderProductID" json:"plan,omitempty"`
 }
 
 // JSONB represents a JSONB database type

@@ -104,9 +104,9 @@ func (s *PlanSyncService) handleProductDeleted(ctx context.Context, eventData js
 
 	// Deactivate all related plans
 	for _, plan := range plans {
-		if err := s.planRepo.Delete(ctx, plan.StripePriceID); err != nil {
+		if err := s.planRepo.Delete(ctx, plan.ProviderPriceID); err != nil {
 			s.logger.Error("Failed to deactivate plan",
-				zap.String("price_id", plan.StripePriceID),
+				zap.String("price_id", plan.ProviderPriceID),
 				zap.Error(err))
 			// Continue with other plans
 		}
@@ -197,8 +197,8 @@ func (s *PlanSyncService) SyncPriceWithProduct(ctx context.Context, p *stripe.Pr
 	}
 
 	plan := &model.SubscriptionPlan{
-		StripePriceID:   p.ID,
-		StripeProductID: prod.ID,
+		ProviderPriceID:   p.ID,
+		ProviderProductID: prod.ID,
 		DisplayName:     prod.Name,
 		Type:            planType,
 		CreditsPerCycle: creditsPerCycle,

@@ -83,7 +83,7 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, universal
 		s.logger.Info("Found subscription plan",
 			zap.String("plan_name", plan.DisplayName),
 			zap.Int("credits_per_cycle", plan.CreditsPerCycle),
-			zap.String("stripe_price_id", plan.StripePriceID))
+			zap.String("provider_price_id", plan.ProviderPriceID))
 	}
 
 	// Allocate credits
