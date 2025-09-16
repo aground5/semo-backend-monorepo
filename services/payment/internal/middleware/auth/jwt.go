@@ -21,7 +21,7 @@ type WorkspaceVerificationService interface {
 // AuthUser represents an authenticated user from JWT
 type AuthUser struct {
 	UserID      string `json:"user_id"`     // User ID from JWT sub claim
-	UniversalID string `json:"universal_id"` // Now stores workspace_id as universal_id
+	UniversalID string `json:"universal_id"` // Stores workspace_id (if provided) or user_id (fallback) based on priority
 	Email       string `json:"email"`
 	Role        string `json:"role"`
 }
@@ -205,66 +205,63 @@ func JWTMiddleware(config JWTConfig) echo.MiddlewareFunc {
 					zap.String("step", "validate_user_id_format"),
 					zap.String("status", "success"))
 
-				// Step 6: Extract workspace_id from X-Workspace-Id header
-				config.Logger.Debug("JWT middleware: Step 6 - Extracting workspace_id from header",
+				// Step 6: Determine UniversalID with priority logic
+				config.Logger.Debug("JWT middleware: Step 6 - Determining UniversalID with priority logic",
 					zap.String("request_id", requestID),
 					zap.String("user_id", userID),
-					zap.String("step", "extract_workspace_id"))
+					zap.String("step", "determine_universal_id"))
 
-				workspaceID := c.Request().Header.Get("X-Workspace-Id")
-				if workspaceID == "" {
-					config.Logger.Warn("JWT middleware: Missing X-Workspace-Id header",
-						zap.String("request_id", requestID),
-						zap.String("user_id", userID),
-						zap.String("path", path),
-						zap.String("step", "extract_workspace_id"),
-						zap.String("status", "failed"))
-					return c.JSON(http.StatusBadRequest, echo.Map{
-						"error": "X-Workspace-Id header required",
-						"code":  "MISSING_WORKSPACE_ID",
-					})
-				}
+				var universalID string
+				var workspaceID string
+				workspaceID = c.Request().Header.Get("X-Workspace-Id")
 
-				config.Logger.Debug("JWT middleware: Workspace ID extracted from header",
-					zap.String("request_id", requestID),
-					zap.String("user_id", userID),
-					zap.String("workspace_id", workspaceID),
-					zap.String("step", "extract_workspace_id"),
-					zap.String("status", "success"))
-
-				// Step 7: Validate workspace_id UUID format
-				config.Logger.Debug("JWT middleware: Step 7 - Validating workspace_id UUID format",
-					zap.String("request_id", requestID),
-					zap.String("user_id", userID),
-					zap.String("workspace_id", workspaceID),
-					zap.String("step", "validate_workspace_id_format"))
-
-				if _, err := uuid.Parse(workspaceID); err != nil {
-					config.Logger.Warn("JWT middleware: Invalid workspace_id format",
+				if workspaceID != "" {
+					// Priority 1: Use X-Workspace-Id header if present
+					config.Logger.Debug("JWT middleware: X-Workspace-Id header found, validating format",
 						zap.String("request_id", requestID),
 						zap.String("user_id", userID),
 						zap.String("workspace_id", workspaceID),
-						zap.String("path", path),
-						zap.String("step", "validate_workspace_id_format"),
-						zap.String("status", "failed"),
-						zap.Error(err))
-					return c.JSON(http.StatusBadRequest, echo.Map{
-						"error": "X-Workspace-Id must be a valid UUID format",
-						"code":  "INVALID_WORKSPACE_ID_FORMAT",
-					})
+						zap.String("step", "validate_workspace_id_format"))
+
+					if _, err := uuid.Parse(workspaceID); err != nil {
+						config.Logger.Warn("JWT middleware: Invalid workspace_id format",
+							zap.String("request_id", requestID),
+							zap.String("user_id", userID),
+							zap.String("workspace_id", workspaceID),
+							zap.String("path", path),
+							zap.String("step", "validate_workspace_id_format"),
+							zap.String("status", "failed"),
+							zap.Error(err))
+						return c.JSON(http.StatusBadRequest, echo.Map{
+							"error": "X-Workspace-Id must be a valid UUID format",
+							"code":  "INVALID_WORKSPACE_ID_FORMAT",
+						})
+					}
+					
+					universalID = workspaceID
+					config.Logger.Debug("JWT middleware: Using workspace_id as UniversalID (priority 1)",
+						zap.String("request_id", requestID),
+						zap.String("user_id", userID),
+						zap.String("workspace_id", workspaceID),
+						zap.String("universal_id", universalID),
+						zap.String("step", "determine_universal_id"),
+						zap.String("priority", "workspace_header"))
+				} else {
+					// Priority 2: Use user_id from JWT sub claim if X-Workspace-Id is not present
+					universalID = userID
+					config.Logger.Debug("JWT middleware: Using user_id as UniversalID (priority 2)",
+						zap.String("request_id", requestID),
+						zap.String("user_id", userID),
+						zap.String("universal_id", universalID),
+						zap.String("step", "determine_universal_id"),
+						zap.String("priority", "jwt_sub"))
 				}
 
-				config.Logger.Debug("JWT middleware: Workspace ID format validation successful",
+				// Step 7: Extract optional fields from JWT claims
+				config.Logger.Debug("JWT middleware: Step 7 - Extracting optional JWT claims",
 					zap.String("request_id", requestID),
 					zap.String("user_id", userID),
-					zap.String("workspace_id", workspaceID),
-					zap.String("step", "validate_workspace_id_format"),
-					zap.String("status", "success"))
-
-				// Step 8: Extract optional fields from JWT claims
-				config.Logger.Debug("JWT middleware: Step 8 - Extracting optional JWT claims",
-					zap.String("request_id", requestID),
-					zap.String("user_id", userID),
+					zap.String("universal_id", universalID),
 					zap.String("workspace_id", workspaceID),
 					zap.String("step", "extract_optional_claims"))
 
@@ -274,15 +271,16 @@ func JWTMiddleware(config JWTConfig) echo.MiddlewareFunc {
 				config.Logger.Debug("JWT middleware: Optional claims extracted",
 					zap.String("request_id", requestID),
 					zap.String("user_id", userID),
+					zap.String("universal_id", universalID),
 					zap.String("workspace_id", workspaceID),
 					zap.String("email", email),
 					zap.String("role", role),
 					zap.String("step", "extract_optional_claims"),
 					zap.String("status", "success"))
 
-				// Step 9: Verify workspace membership if workspace verification service is provided
-				if config.WorkspaceVerificationService != nil {
-					config.Logger.Debug("JWT middleware: Step 9 - Starting workspace verification",
+				// Step 8: Verify workspace membership if workspace verification service is provided and workspace_id is available
+				if config.WorkspaceVerificationService != nil && workspaceID != "" {
+					config.Logger.Debug("JWT middleware: Step 8 - Starting workspace verification",
 						zap.String("request_id", requestID),
 						zap.String("user_id", userID),
 						zap.String("workspace_id", workspaceID),
@@ -319,28 +317,39 @@ func JWTMiddleware(config JWTConfig) echo.MiddlewareFunc {
 						zap.String("step", "workspace_verification"),
 						zap.String("status", "success"),
 						zap.Duration("verification_duration", verificationDuration))
+				} else if config.WorkspaceVerificationService != nil && workspaceID == "" {
+					// Log info when workspace verification service is available but no workspace_id provided
+					config.Logger.Info("JWT middleware: Workspace verification skipped - no workspace_id provided, using user-level access",
+						zap.String("request_id", requestID),
+						zap.String("user_id", userID),
+						zap.String("universal_id", universalID),
+						zap.String("path", path),
+						zap.String("step", "workspace_verification"),
+						zap.String("status", "skipped_no_workspace"))
 				} else {
 					// Log warning if workspace verification is disabled
 					config.Logger.Warn("JWT middleware: Workspace verification is disabled - security risk",
 						zap.String("request_id", requestID),
 						zap.String("user_id", userID),
+						zap.String("universal_id", universalID),
 						zap.String("workspace_id", workspaceID),
 						zap.String("path", path),
 						zap.String("step", "workspace_verification"),
-						zap.String("status", "skipped"))
+						zap.String("status", "disabled"))
 				}
 
-				// Step 10: Create authenticated user and set context
-				config.Logger.Debug("JWT middleware: Step 10 - Creating authenticated user context",
+				// Step 9: Create authenticated user and set context
+				config.Logger.Debug("JWT middleware: Step 9 - Creating authenticated user context",
 					zap.String("request_id", requestID),
 					zap.String("user_id", userID),
+					zap.String("universal_id", universalID),
 					zap.String("workspace_id", workspaceID),
 					zap.String("step", "create_auth_context"))
 
-				// Create authenticated user with workspace_id as universal_id
+				// Create authenticated user with determined universal_id (workspace_id or user_id based on priority)
 				authUser := &AuthUser{
-					UserID:      userID,      // User ID from JWT sub claim
-					UniversalID: workspaceID, // Using workspace_id as universal_id
+					UserID:      userID,    // User ID from JWT sub claim
+					UniversalID: universalID, // UniversalID determined by priority logic
 					Email:       email,
 					Role:        role,
 				}
@@ -349,15 +358,16 @@ func JWTMiddleware(config JWTConfig) echo.MiddlewareFunc {
 				ctx := context.WithValue(c.Request().Context(), userContextKey, authUser)
 				c.SetRequest(c.Request().WithContext(ctx))
 
-				// Set universal_id in echo context (actually workspace_id)
-				c.Set("universal_id", workspaceID)
-				c.Set("workspace_id", workspaceID) // Also set as workspace_id for clarity
+				// Set universal_id in echo context (could be workspace_id or user_id)
+				c.Set("universal_id", universalID)
+				c.Set("workspace_id", workspaceID) // Set workspace_id (could be empty string if not provided)
 				c.Set("request_id", requestID)       // Store request ID for downstream logging
 
 				totalDuration := time.Since(startTime)
 				config.Logger.Info("JWT middleware: Authentication completed successfully",
 					zap.String("request_id", requestID),
 					zap.String("user_id", userID),
+					zap.String("universal_id", universalID),
 					zap.String("workspace_id", workspaceID),
 					zap.String("email", email),
 					zap.String("role", role),
@@ -410,12 +420,17 @@ func GetUniversalID(c echo.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return user.UniversalID, nil // UniversalID now contains workspace_id
+	return user.UniversalID, nil // UniversalID contains workspace_id (if header provided) or user_id (fallback)
 }
 
-// GetWorkspaceID is a helper function to get workspace_id from context (alias for GetUniversalID)
+// GetWorkspaceID is a helper function to get workspace_id from context
+// Note: This returns the actual workspace_id from header, which may be empty if not provided
 func GetWorkspaceID(c echo.Context) (string, error) {
-	return GetUniversalID(c)
+	workspaceID, ok := c.Get("workspace_id").(string)
+	if !ok {
+		return "", fmt.Errorf("no workspace_id found in context")
+	}
+	return workspaceID, nil
 }
 
 // GetUserID is a helper function to get user_id from context

@@ -132,6 +132,11 @@ func (s *Server) setupRoutes() {
 	subscriptions.DELETE("/current", subscriptionHandler.CancelCurrentSubscription) // New secure endpoint
 	subscriptions.POST("/portal", checkoutHandler.CreatePortalSession)
 
+	// // one-time payment - RESTful style (all require authentication)
+	// products := protected.Group("/products")
+	// products.POST("", productHandler.CreatePayment)                    // Provider-based payment creation
+	// products.POST("/confirm", productHandler.ConfirmPayment)          // TossPayments confirmation
+
 	// Checkout session status endpoint (requires authentication)
 	protected.GET("/checkout/session/:sessionId", checkoutHandler.CheckSessionStatus)
 

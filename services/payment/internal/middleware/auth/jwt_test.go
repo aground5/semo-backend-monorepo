@@ -121,7 +121,7 @@ func TestJWTMiddleware_MissingAuthorizationHeader(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "MISSING_AUTH_HEADER")
 }
 
-func TestJWTMiddleware_MissingWorkspaceIdHeader(t *testing.T) {
+func TestJWTMiddleware_MissingWorkspaceIdHeader_UsesUserIdAsFallback(t *testing.T) {
 	logger := zap.NewNop()
 	
 	config := JWTConfig{
@@ -135,6 +135,16 @@ func TestJWTMiddleware_MissingWorkspaceIdHeader(t *testing.T) {
 	middleware := JWTMiddleware(config)
 	
 	handler := middleware(func(c echo.Context) error {
+		user, err := GetUserFromContext(c)
+		assert.NoError(t, err)
+		// When no X-Workspace-Id header, user_id should be used as UniversalID
+		assert.Equal(t, user.UserID, user.UniversalID)
+		
+		// Test that workspace_id is empty string
+		workspaceID, err := GetWorkspaceID(c)
+		assert.NoError(t, err)
+		assert.Equal(t, "", workspaceID)
+		
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 	
@@ -149,8 +159,7 @@ func TestJWTMiddleware_MissingWorkspaceIdHeader(t *testing.T) {
 	
 	err := handler(c)
 	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	assert.Contains(t, rec.Body.String(), "MISSING_WORKSPACE_ID")
+	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestJWTMiddleware_InvalidUserIdFormat(t *testing.T) {
@@ -280,6 +289,8 @@ func TestJWTMiddleware_DisabledWorkspaceVerification(t *testing.T) {
 		user, err := GetUserFromContext(c)
 		assert.NoError(t, err)
 		assert.Equal(t, userID, user.UserID)
+		// With workspace header, UniversalID should be workspace_id
+		assert.Equal(t, workspaceID, user.UniversalID)
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 	
@@ -310,7 +321,7 @@ func TestGetUserID(t *testing.T) {
 	userID, workspaceID := createValidUUIDs()
 	authUser := &AuthUser{
 		UserID:      userID,
-		UniversalID: workspaceID,
+		UniversalID: workspaceID, // Using workspace_id as UniversalID in this test
 		Email:       "test@example.com",
 		Role:        "admin",
 	}
@@ -321,4 +332,86 @@ func TestGetUserID(t *testing.T) {
 	retrievedUserID, err := GetUserID(c)
 	assert.NoError(t, err)
 	assert.Equal(t, userID, retrievedUserID)
+}
+
+func TestUniversalIDPriorityLogic(t *testing.T) {
+	logger := zap.NewNop()
+	
+	config := JWTConfig{
+		Secret:                       "test-secret",
+		Logger:                       logger,
+		WorkspaceVerificationService: nil,
+		SkipPaths:                    []string{},
+	}
+	
+	e := echo.New()
+	middleware := JWTMiddleware(config)
+	
+	userID, workspaceID := createValidUUIDs()
+	
+	t.Run("Priority 1: X-Workspace-Id header present", func(t *testing.T) {
+		handler := middleware(func(c echo.Context) error {
+			user, err := GetUserFromContext(c)
+			assert.NoError(t, err)
+			
+			// UniversalID should be workspace_id (priority 1)
+			assert.Equal(t, workspaceID, user.UniversalID)
+			assert.Equal(t, userID, user.UserID)
+			
+			// Verify context values
+			universalID, err := GetUniversalID(c)
+			assert.NoError(t, err)
+			assert.Equal(t, workspaceID, universalID)
+			
+			contextWorkspaceID, err := GetWorkspaceID(c)
+			assert.NoError(t, err)
+			assert.Equal(t, workspaceID, contextWorkspaceID)
+			
+			return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+		})
+		
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Authorization", "Bearer "+createValidJWT(userID, "test@example.com", "admin"))
+		req.Header.Set("X-Workspace-Id", workspaceID)
+		rec := httptest.NewRecorder()
+		
+		c := e.NewContext(req, rec)
+		
+		err := handler(c)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+	
+	t.Run("Priority 2: X-Workspace-Id header missing, fallback to user_id", func(t *testing.T) {
+		handler := middleware(func(c echo.Context) error {
+			user, err := GetUserFromContext(c)
+			assert.NoError(t, err)
+			
+			// UniversalID should be user_id (priority 2 - fallback)
+			assert.Equal(t, userID, user.UniversalID)
+			assert.Equal(t, userID, user.UserID)
+			
+			// Verify context values
+			universalID, err := GetUniversalID(c)
+			assert.NoError(t, err)
+			assert.Equal(t, userID, universalID)
+			
+			contextWorkspaceID, err := GetWorkspaceID(c)
+			assert.NoError(t, err)
+			assert.Equal(t, "", contextWorkspaceID) // Should be empty when header not provided
+			
+			return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+		})
+		
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Authorization", "Bearer "+createValidJWT(userID, "test@example.com", "admin"))
+		// No X-Workspace-Id header
+		rec := httptest.NewRecorder()
+		
+		c := e.NewContext(req, rec)
+		
+		err := handler(c)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
 }

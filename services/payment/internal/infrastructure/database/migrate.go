@@ -37,6 +37,7 @@ func Migrate(db *gorm.DB, logger *zap.Logger) error {
 		&model.UserCreditBalance{},
 		&model.Payment{},
 		&model.StripeWebhookEvent{},
+		&model.TossWebhookEvent{},
 		&model.AuditLog{},
 		&model.CustomerMapping{},
 	)
