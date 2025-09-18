@@ -201,6 +201,75 @@ func (r *paymentRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// CreateOneTimePayment creates a new one-time payment record
+func (r *paymentRepository) CreateOneTimePayment(ctx context.Context, payment *entity.Payment) error {
+	universalID, err := uuid.Parse(payment.UniversalID)
+	if err != nil {
+		return fmt.Errorf("invalid universal ID: %w", err)
+	}
+
+	paymentModel := &model.Payment{
+		UniversalID:            universalID,
+		ProviderInvoiceID:      &payment.TransactionID, // Use order ID
+		AmountCents:            int(payment.Amount),    // Already in smallest unit
+		Currency:               payment.Currency,
+		Status:                 string(payment.Status),
+		ProviderPaymentData:    payment.Metadata,
+	}
+
+	err = r.db.WithContext(ctx).Create(paymentModel).Error
+	if err != nil {
+		r.logger.Error("Failed to create one-time payment",
+			zap.String("universal_id", payment.UniversalID),
+			zap.String("order_id", payment.TransactionID),
+			zap.Error(err))
+		return fmt.Errorf("failed to create one-time payment: %w", err)
+	}
+
+	payment.ID = fmt.Sprintf("%d", paymentModel.ID)
+	return nil
+}
+
+// GetByOrderID retrieves a payment by order ID
+func (r *paymentRepository) GetByOrderID(ctx context.Context, orderID string) (*entity.Payment, error) {
+	var payment model.Payment
+
+	err := r.db.WithContext(ctx).
+		Where("provider_invoice_id = ?", orderID).
+		First(&payment).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		r.logger.Error("Failed to get payment by order ID",
+			zap.String("order_id", orderID),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to get payment: %w", err)
+	}
+
+	return r.modelToEntity(&payment), nil
+}
+
+// UpdatePaymentAfterConfirm updates payment after provider confirmation
+func (r *paymentRepository) UpdatePaymentAfterConfirm(ctx context.Context, orderID string, updates map[string]interface{}) error {
+	updates["updated_at"] = gorm.Expr("NOW()")
+
+	err := r.db.WithContext(ctx).
+		Model(&model.Payment{}).
+		Where("provider_invoice_id = ?", orderID).
+		Updates(updates).Error
+
+	if err != nil {
+		r.logger.Error("Failed to update payment after confirmation",
+			zap.String("order_id", orderID),
+			zap.Error(err))
+		return fmt.Errorf("failed to update payment: %w", err)
+	}
+
+	return nil
+}
+
 func (r *paymentRepository) List(ctx context.Context, limit, offset int) ([]*entity.Payment, error) {
 	var payments []model.Payment
 
