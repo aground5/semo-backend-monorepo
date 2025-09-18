@@ -14,4 +14,9 @@ type PaymentRepository interface {
 	Update(ctx context.Context, payment *entity.Payment) error
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context, limit, offset int) ([]*entity.Payment, error)
+
+	// One-time payment methods
+	CreateOneTimePayment(ctx context.Context, payment *entity.Payment) error
+	GetByOrderID(ctx context.Context, orderID string) (*entity.Payment, error)
+	UpdatePaymentAfterConfirm(ctx context.Context, orderID string, updates map[string]interface{}) error
 }

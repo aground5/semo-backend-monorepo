@@ -12,6 +12,7 @@ import (
 	handlers "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/handler/http"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/config"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/database"
+	providerFactory "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/provider"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/middleware/auth"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/usecase"
 	"go.uber.org/zap"
@@ -85,11 +86,15 @@ func (s *Server) setupRoutes() {
 		})
 	})
 
+	// Initialize provider factory
+	factory := providerFactory.NewFactory(s.config, s.logger)
+
 	// Initialize services
 	subscriptionService := usecase.NewSubscriptionService(s.repos.CustomerMapping, s.repos.Subscription, s.logger)
 	creditService := usecase.NewCreditService(s.repos.Credit, s.repos.Subscription, s.repos.Plan, s.logger)
 	creditTransactionService := usecase.NewCreditTransactionService(s.repos.CreditTransaction, s.logger)
 	workspaceVerificationService := usecase.NewWorkspaceVerificationService(s.repos.WorkspaceVerification, s.logger)
+	productUseCase := usecase.NewProductUseCase(s.repos.Payment, s.logger)
 
 	// Initialize handlers
 	plansHandler := handlers.NewPlansHandler(s.logger, s.repos.Plan)
@@ -99,6 +104,8 @@ func (s *Server) setupRoutes() {
 	paymentUsecase := usecase.NewPaymentUsecase(s.repos.Payment, nil, s.logger)
 	paymentHandler := handlers.NewPaymentHandler(paymentUsecase, s.logger)
 	creditHandler := handlers.NewCreditHandler(s.logger, creditService, creditTransactionService)
+	productHandler := handlers.NewProductHandler(productUseCase, factory, s.logger)
+	tossWebhookHandler := handlers.NewTossWebhookHandler(s.logger, s.repos.Payment, s.config.Service.Toss.SecretKey, s.config.Service.Toss.ClientKey)
 
 	// JWT middleware configuration
 	jwtConfig := auth.JWTConfig{
@@ -132,10 +139,10 @@ func (s *Server) setupRoutes() {
 	subscriptions.DELETE("/current", subscriptionHandler.CancelCurrentSubscription) // New secure endpoint
 	subscriptions.POST("/portal", checkoutHandler.CreatePortalSession)
 
-	// // one-time payment - RESTful style (all require authentication)
-	// products := protected.Group("/products")
-	// products.POST("", productHandler.CreatePayment)                    // Provider-based payment creation
-	// products.POST("/confirm", productHandler.ConfirmPayment)          // TossPayments confirmation
+	// One-time payment - RESTful style (all require authentication)
+	products := protected.Group("/products")
+	products.POST("", productHandler.CreatePayment)           // Provider-based payment creation
+	products.POST("/confirm", productHandler.ConfirmPayment)  // Provider payment confirmation
 
 	// Checkout session status endpoint (requires authentication)
 	protected.GET("/checkout/session/:sessionId", checkoutHandler.CheckSessionStatus)
@@ -153,6 +160,7 @@ func (s *Server) setupRoutes() {
 	internal := v1.Group("/internal")
 	internal.GET("/webhook-data", webhookHandler.GetWebhookData)
 
-	// Webhook route (outside API versioning)
-	s.echo.POST("/webhook", webhookHandler.HandleWebhook)
+	// Webhook routes (outside API versioning)
+	s.echo.POST("/webhook", webhookHandler.HandleWebhook)        // Stripe webhook
+	s.echo.POST("/webhook/toss", tossWebhookHandler.Handle)      // Toss webhook
 }
