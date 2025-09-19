@@ -196,7 +196,7 @@ func (s *PlanSyncService) SyncPriceWithProduct(ctx context.Context, p *stripe.Pr
 		fmt.Sscanf(order, "%d", &sortOrder)
 	}
 
-	plan := &model.SubscriptionPlan{
+	plan := &model.PaymentPlan{
 		ProviderPriceID:   p.ID,
 		ProviderProductID: prod.ID,
 		DisplayName:     prod.Name,

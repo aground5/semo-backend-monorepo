@@ -65,22 +65,22 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, universal
 		s.logger.Info("No existing transaction found, proceeding with credit allocation")
 	}
 
-	// Get the subscription plan to determine credits
-	s.logger.Info("Looking up subscription plan by price ID", zap.String("price_id", stripePriceID))
+	// Get the payment plan to determine credits
+	s.logger.Info("Looking up payment plan by price ID", zap.String("price_id", stripePriceID))
 	plan, err := s.planRepo.GetByPriceID(ctx, stripePriceID)
 	if err != nil {
-		s.logger.Error("Failed to get subscription plan from database",
+		s.logger.Error("Failed to get payment plan from database",
 			zap.String("price_id", stripePriceID),
 			zap.Error(err))
-		return fmt.Errorf("failed to get subscription plan: %w", err)
+		return fmt.Errorf("failed to get payment plan: %w", err)
 	}
 
 	if plan == nil {
-		s.logger.Error("No subscription plan found for price ID",
+		s.logger.Error("No payment plan found for price ID",
 			zap.String("price_id", stripePriceID))
-		return fmt.Errorf("subscription plan not found for price: %s", stripePriceID)
+		return fmt.Errorf("payment plan not found for price: %s", stripePriceID)
 	} else {
-		s.logger.Info("Found subscription plan",
+		s.logger.Info("Found payment plan",
 			zap.String("plan_name", plan.DisplayName),
 			zap.Int("credits_per_cycle", plan.CreditsPerCycle),
 			zap.String("provider_price_id", plan.ProviderPriceID))
