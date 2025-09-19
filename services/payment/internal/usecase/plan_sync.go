@@ -199,6 +199,7 @@ func (s *PlanSyncService) SyncPriceWithProduct(ctx context.Context, p *stripe.Pr
 	plan := &model.PaymentPlan{
 		ProviderPriceID:   p.ID,
 		ProviderProductID: prod.ID,
+		PgProvider:       "stripe",
 		DisplayName:     prod.Name,
 		Type:            planType,
 		CreditsPerCycle: creditsPerCycle,
