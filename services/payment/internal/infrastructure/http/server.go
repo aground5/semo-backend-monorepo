@@ -126,7 +126,7 @@ func (s *Server) setupRoutes() {
 	// Public routes (no authentication required)
 	// Plans & Pricing - public for browsing
 	v1.GET("/plans", plansHandler.GetPlans)                          // All plans (backward compatibility)
-	v1.GET("/plans/subscription", plansHandler.GetSubscriptionPlans) // Subscription plans only
+	v1.GET("/plans/subscription", plansHandler.GetSubscriptionPlans) // Subscription-type payment plans only
 	v1.GET("/plans/one-time", plansHandler.GetOneTimePlans)          // One-time payment plans only
 
 	// Protected routes (require JWT authentication)

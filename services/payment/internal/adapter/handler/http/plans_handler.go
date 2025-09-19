@@ -21,18 +21,18 @@ func NewPlansHandler(logger *zap.Logger, planRepo repository.PlanRepository) *Pl
 	}
 }
 
-// GetSubscriptionPlans returns all subscription plans
+// GetSubscriptionPlans returns all subscription-type payment plans
 func (h *PlansHandler) GetSubscriptionPlans(c echo.Context) error {
-	h.logger.Info("Fetching subscription plans from database...")
+	h.logger.Info("Fetching subscription-type payment plans from database...")
 
 	ctx := c.Request().Context()
 
-	// Query subscription plans from database
+	// Query subscription-type payment plans from database
 	dbPlans, err := h.planRepo.GetByType(ctx, "subscription")
 	if err != nil {
-		h.logger.Error("Error fetching subscription plans from database", zap.Error(err))
+		h.logger.Error("Error fetching subscription-type payment plans from database", zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, echo.Map{
-			"error": "Failed to fetch subscription plans",
+			"error": "Failed to fetch subscription-type payment plans",
 		})
 	}
 

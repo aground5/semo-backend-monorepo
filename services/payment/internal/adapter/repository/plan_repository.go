@@ -10,16 +10,16 @@ import (
 	"gorm.io/gorm"
 )
 
-// PlanRepository handles subscription plan storage
+// PlanRepository handles payment plan storage
 type PlanRepository interface {
-	GetAll(ctx context.Context) ([]*model.SubscriptionPlan, error)
-	GetByType(ctx context.Context, planType string) ([]*model.SubscriptionPlan, error)
-	GetByPriceID(ctx context.Context, priceID string) (*model.SubscriptionPlan, error)
-	GetByProductID(ctx context.Context, productID string) ([]*model.SubscriptionPlan, error)
-	Create(ctx context.Context, plan *model.SubscriptionPlan) error
-	Update(ctx context.Context, plan *model.SubscriptionPlan) error
+	GetAll(ctx context.Context) ([]*model.PaymentPlan, error)
+	GetByType(ctx context.Context, planType string) ([]*model.PaymentPlan, error)
+	GetByPriceID(ctx context.Context, priceID string) (*model.PaymentPlan, error)
+	GetByProductID(ctx context.Context, productID string) ([]*model.PaymentPlan, error)
+	Create(ctx context.Context, plan *model.PaymentPlan) error
+	Update(ctx context.Context, plan *model.PaymentPlan) error
 	Delete(ctx context.Context, priceID string) error
-	Upsert(ctx context.Context, plan *model.SubscriptionPlan) error
+	Upsert(ctx context.Context, plan *model.PaymentPlan) error
 }
 
 type planRepository struct {
@@ -35,9 +35,9 @@ func NewPlanRepository(db *gorm.DB, logger *zap.Logger) PlanRepository {
 	}
 }
 
-// GetAll retrieves all active subscription plans
-func (r *planRepository) GetAll(ctx context.Context) ([]*model.SubscriptionPlan, error) {
-	var plans []*model.SubscriptionPlan
+// GetAll retrieves all active payment plans
+func (r *planRepository) GetAll(ctx context.Context) ([]*model.PaymentPlan, error) {
+	var plans []*model.PaymentPlan
 
 	err := r.db.WithContext(ctx).
 		Where("is_active = ?", true).
@@ -53,8 +53,8 @@ func (r *planRepository) GetAll(ctx context.Context) ([]*model.SubscriptionPlan,
 }
 
 // GetByType retrieves all active plans of a specific type
-func (r *planRepository) GetByType(ctx context.Context, planType string) ([]*model.SubscriptionPlan, error) {
-	var plans []*model.SubscriptionPlan
+func (r *planRepository) GetByType(ctx context.Context, planType string) ([]*model.PaymentPlan, error) {
+	var plans []*model.PaymentPlan
 
 	err := r.db.WithContext(ctx).
 		Where("type = ? AND is_active = ?", planType, true).
@@ -72,8 +72,8 @@ func (r *planRepository) GetByType(ctx context.Context, planType string) ([]*mod
 }
 
 // GetByPriceID retrieves a plan by Stripe price ID
-func (r *planRepository) GetByPriceID(ctx context.Context, priceID string) (*model.SubscriptionPlan, error) {
-	var plan model.SubscriptionPlan
+func (r *planRepository) GetByPriceID(ctx context.Context, priceID string) (*model.PaymentPlan, error) {
+	var plan model.PaymentPlan
 
 	err := r.db.WithContext(ctx).
 		Where("provider_price_id = ?", priceID).
@@ -93,8 +93,8 @@ func (r *planRepository) GetByPriceID(ctx context.Context, priceID string) (*mod
 }
 
 // GetByProductID retrieves all plans for a Stripe product
-func (r *planRepository) GetByProductID(ctx context.Context, productID string) ([]*model.SubscriptionPlan, error) {
-	var plans []*model.SubscriptionPlan
+func (r *planRepository) GetByProductID(ctx context.Context, productID string) ([]*model.PaymentPlan, error) {
+	var plans []*model.PaymentPlan
 
 	err := r.db.WithContext(ctx).
 		Where("provider_product_id = ?", productID).
@@ -110,8 +110,8 @@ func (r *planRepository) GetByProductID(ctx context.Context, productID string) (
 	return plans, nil
 }
 
-// Create creates a new subscription plan
-func (r *planRepository) Create(ctx context.Context, plan *model.SubscriptionPlan) error {
+// Create creates a new payment plan
+func (r *planRepository) Create(ctx context.Context, plan *model.PaymentPlan) error {
 	err := r.db.WithContext(ctx).Create(plan).Error
 	if err != nil {
 		r.logger.Error("Failed to create plan",
@@ -123,10 +123,10 @@ func (r *planRepository) Create(ctx context.Context, plan *model.SubscriptionPla
 	return nil
 }
 
-// Update updates an existing subscription plan
-func (r *planRepository) Update(ctx context.Context, plan *model.SubscriptionPlan) error {
+// Update updates an existing payment plan
+func (r *planRepository) Update(ctx context.Context, plan *model.PaymentPlan) error {
 	err := r.db.WithContext(ctx).
-		Model(&model.SubscriptionPlan{}).
+		Model(&model.PaymentPlan{}).
 		Where("provider_price_id = ?", plan.ProviderPriceID).
 		Updates(plan).Error
 
@@ -140,10 +140,10 @@ func (r *planRepository) Update(ctx context.Context, plan *model.SubscriptionPla
 	return nil
 }
 
-// Delete soft deletes a subscription plan
+// Delete soft deletes a payment plan
 func (r *planRepository) Delete(ctx context.Context, priceID string) error {
 	err := r.db.WithContext(ctx).
-		Model(&model.SubscriptionPlan{}).
+		Model(&model.PaymentPlan{}).
 		Where("provider_price_id = ?", priceID).
 		Update("is_active", false).Error
 
@@ -157,8 +157,8 @@ func (r *planRepository) Delete(ctx context.Context, priceID string) error {
 	return nil
 }
 
-// Upsert creates or updates a subscription plan
-func (r *planRepository) Upsert(ctx context.Context, plan *model.SubscriptionPlan) error {
+// Upsert creates or updates a payment plan
+func (r *planRepository) Upsert(ctx context.Context, plan *model.PaymentPlan) error {
 	// Check if plan exists
 	existing, err := r.GetByPriceID(ctx, plan.ProviderPriceID)
 	if err != nil {

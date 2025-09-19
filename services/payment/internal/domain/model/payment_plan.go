@@ -12,8 +12,8 @@ const (
 	PlanTypeOneTime      = "one_time"
 )
 
-// SubscriptionPlan represents a subscription plan
-type SubscriptionPlan struct {
+// PaymentPlan represents a payment plan (subscription or one-time)
+type PaymentPlan struct {
 	ID              int64     `gorm:"primaryKey;autoIncrement" json:"id"`
 	ProviderPriceID   string    `gorm:"column:provider_price_id;unique;not null;size:100" json:"provider_price_id"`
 	ProviderProductID string    `gorm:"column:provider_product_id;not null;size:100" json:"provider_product_id"`
@@ -54,6 +54,6 @@ func (f *Features) Scan(src interface{}) error {
 }
 
 // TableName specifies the table name for GORM
-func (SubscriptionPlan) TableName() string {
-	return "subscription_plans"
+func (PaymentPlan) TableName() string {
+	return "payment_plans"
 }

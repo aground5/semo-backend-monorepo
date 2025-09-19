@@ -55,7 +55,7 @@ type Subscription struct {
 	UpdatedAt              time.Time          `gorm:"default:now()" json:"updated_at"`
 
 	// Relations
-	Plan *SubscriptionPlan `gorm:"foreignKey:PlanID;references:ProviderProductID" json:"plan,omitempty"`
+	Plan *PaymentPlan `gorm:"foreignKey:PlanID;references:ProviderProductID" json:"plan,omitempty"`
 }
 
 // JSONB represents a JSONB database type

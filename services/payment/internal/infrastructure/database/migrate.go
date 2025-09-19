@@ -31,7 +31,7 @@ func Migrate(db *gorm.DB, logger *zap.Logger) error {
 	// Auto-migrate all models
 	logger.Info("Running GORM auto-migrations...")
 	err := db.AutoMigrate(
-		&model.SubscriptionPlan{},
+		&model.PaymentPlan{},
 		&model.Subscription{},
 		&model.CreditTransaction{},
 		&model.UserCreditBalance{},
