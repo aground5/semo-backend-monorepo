@@ -14,6 +14,7 @@ import (
 type PlanRepository interface {
 	GetAll(ctx context.Context) ([]*model.PaymentPlan, error)
 	GetByType(ctx context.Context, planType string) ([]*model.PaymentPlan, error)
+	GetByTypeAndProvider(ctx context.Context, planType string, provider string) ([]*model.PaymentPlan, error)
 	GetByPriceID(ctx context.Context, priceID string) (*model.PaymentPlan, error)
 	GetByProductID(ctx context.Context, productID string) ([]*model.PaymentPlan, error)
 	Create(ctx context.Context, plan *model.PaymentPlan) error
@@ -54,18 +55,30 @@ func (r *planRepository) GetAll(ctx context.Context) ([]*model.PaymentPlan, erro
 
 // GetByType retrieves all active plans of a specific type
 func (r *planRepository) GetByType(ctx context.Context, planType string) ([]*model.PaymentPlan, error) {
+	return r.GetByTypeAndProvider(ctx, planType, "")
+}
+
+// GetByTypeAndProvider retrieves all active plans of a specific type filtered by provider when supplied
+func (r *planRepository) GetByTypeAndProvider(ctx context.Context, planType string, provider string) ([]*model.PaymentPlan, error) {
 	var plans []*model.PaymentPlan
 
-	err := r.db.WithContext(ctx).
-		Where("type = ? AND is_active = ?", planType, true).
+	query := r.db.WithContext(ctx).
+		Where("type = ? AND is_active = ?", planType, true)
+
+	if provider != "" {
+		query = query.Where("pg_provider = ?", provider)
+	}
+
+	err := query.
 		Order("sort_order ASC, display_name ASC").
 		Find(&plans).Error
 
 	if err != nil {
-		r.logger.Error("Failed to get plans by type",
+		r.logger.Error("Failed to get plans by type and provider",
 			zap.String("type", planType),
+			zap.String("provider", provider),
 			zap.Error(err))
-		return nil, fmt.Errorf("failed to get plans by type: %w", err)
+		return nil, fmt.Errorf("failed to get plans by type and provider: %w", err)
 	}
 
 	return plans, nil

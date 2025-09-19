@@ -6,6 +6,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/model"
 	"go.uber.org/zap"
 )
 
@@ -27,8 +28,15 @@ func (h *PlansHandler) GetSubscriptionPlans(c echo.Context) error {
 
 	ctx := c.Request().Context()
 
+	provider := c.QueryParam("provider")
+	if provider == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{
+			"error": "provider query parameter is required",
+		})
+	}
+
 	// Query subscription-type payment plans from database
-	dbPlans, err := h.planRepo.GetByType(ctx, "subscription")
+	dbPlans, err := h.planRepo.GetByTypeAndProvider(ctx, "subscription", provider)
 	if err != nil {
 		h.logger.Error("Error fetching subscription-type payment plans from database", zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -48,6 +56,8 @@ func (h *PlansHandler) GetSubscriptionPlans(c echo.Context) error {
 			Interval:      "month",                       // Default interval
 			IntervalCount: 1,
 		}
+
+		plan.Provider = dbPlan.PgProvider
 
 		// Extract description from features if available
 		if desc, ok := dbPlan.Features["description"].(string); ok {
@@ -93,8 +103,15 @@ func (h *PlansHandler) GetOneTimePlans(c echo.Context) error {
 
 	ctx := c.Request().Context()
 
+	provider := c.QueryParam("provider")
+	if provider == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{
+			"error": "provider query parameter is required",
+		})
+	}
+
 	// Query one-time payment plans from database
-	dbPlans, err := h.planRepo.GetByType(ctx, "one_time")
+	dbPlans, err := h.planRepo.GetByTypeAndProvider(ctx, "one_time", provider)
 	if err != nil {
 		h.logger.Error("Error fetching one-time payment plans from database", zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -113,6 +130,8 @@ func (h *PlansHandler) GetOneTimePlans(c echo.Context) error {
 			Currency:    "KRW",                         // Default currency
 			Type:        "one_time",                    // One-time payment
 		}
+
+		plan.Provider = dbPlan.PgProvider
 
 		// Extract description from features if available
 		if desc, ok := dbPlan.Features["description"].(string); ok {
@@ -152,8 +171,19 @@ func (h *PlansHandler) GetPlans(c echo.Context) error {
 
 	ctx := c.Request().Context()
 
+	provider := c.QueryParam("provider")
+
 	// Query all plans from database
 	dbPlans, err := h.planRepo.GetAll(ctx)
+	if provider != "" {
+		filtered := make([]*model.PaymentPlan, 0, len(dbPlans))
+		for _, plan := range dbPlans {
+			if plan.PgProvider == provider {
+				filtered = append(filtered, plan)
+			}
+		}
+		dbPlans = filtered
+	}
 	if err != nil {
 		h.logger.Error("Error fetching plans from database", zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -172,6 +202,8 @@ func (h *PlansHandler) GetPlans(c echo.Context) error {
 			Currency:    "KRW",                         // Default currency
 			Type:        dbPlan.Type,                   // Include the type
 		}
+
+		plan.Provider = dbPlan.PgProvider
 
 		// Set interval for subscriptions
 		if dbPlan.Type == "subscription" {
