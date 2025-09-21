@@ -19,7 +19,8 @@ type SupabaseConfig struct {
 }
 
 type TossConfig struct {
-	SecretKey      string `yaml:"secret_key"`
-	ClientKey      string `yaml:"client_key"`
-	WebhookSecret  string `yaml:"webhook_secret"`
+	SecretKey     string `yaml:"secret_key"`
+	ClientKey     string `yaml:"client_key"`
+	WebhookSecret string `yaml:"webhook_secret"`
+	PlansFile     string `yaml:"plans_file"`
 }

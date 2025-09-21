@@ -1,0 +1,27 @@
+plans:
+  - provider_price_id: toss_price_basic
+    provider_product_id: toss_prod_basic
+    pg_provider: toss
+    display_name: SEMO Toss Basic
+    type: subscription
+    credits_per_cycle: 1000
+    features:
+      amount: 2000
+      currency: krw
+      interval: month
+      interval_count: 1
+      description: test product for semo subscribe
+    sort_order: 0
+    is_active: true
+  - provider_price_id: toss_price_onetime
+    provider_product_id: toss_prod_onetime
+    pg_provider: toss
+    display_name: SEMO Toss One-Time
+    type: one_time
+    credits_per_cycle: 500
+    features:
+      amount: 5000
+      currency: usd
+      description: one-time credit pack for SEMO
+    sort_order: 10
+    is_active: true

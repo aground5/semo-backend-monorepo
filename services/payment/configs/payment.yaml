@@ -10,6 +10,7 @@ service:
     secret_key: test_sk_QbgMGZzorz5JWj0R4jPPVl5E1em4
     client_key: test_ck_GePWvyJnrKJwX0DWaJAOVgLzN97E
     webhook_secret: toss_webhook_secret_test
+    plans_file: ./configs/toss_plans.yaml
   supabase:
     jwt_secret: Bhbu6ZNLzeETDhXy6XB6ssKzDDM4amES619RFLc4WhjGr783oq/uhLrWCnib5/uoZwbmn9SrTrUomSNpWMwuaA==
     project_url: https://fjctbfwohrqdmrdyqbig.supabase.co
