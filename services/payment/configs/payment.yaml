@@ -10,6 +10,7 @@ service:
     secret_key: REMOVED_TOSS_TEST_SECRET_KEY
     client_key: REMOVED_TOSS_TEST_CLIENT_KEY
     webhook_secret: toss_webhook_secret_test
+    plans_file: ./configs/toss_plans.yaml
   supabase:
     jwt_secret: REMOVED_SUPABASE_JWT_SECRET
     project_url: https://fjctbfwohrqdmrdyqbig.supabase.co
