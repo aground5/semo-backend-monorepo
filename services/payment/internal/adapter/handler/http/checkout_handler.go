@@ -15,13 +15,22 @@ import (
 type CheckoutHandler struct {
 	logger              *zap.Logger
 	clientURL           string
+	allowedOrigins      map[string]struct{}
 	customerMappingRepo repository.CustomerMappingRepository
 }
 
-func NewCheckoutHandler(logger *zap.Logger, clientURL string, customerMappingRepo repository.CustomerMappingRepository) *CheckoutHandler {
+func NewCheckoutHandler(logger *zap.Logger, clientURL string, allowedOrigins []string, customerMappingRepo repository.CustomerMappingRepository) *CheckoutHandler {
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, origin := range allowedOrigins {
+		if origin == "" {
+			continue
+		}
+		allowed[origin] = struct{}{}
+	}
 	return &CheckoutHandler{
 		logger:              logger,
 		clientURL:           clientURL,
+		allowedOrigins:      allowed,
 		customerMappingRepo: customerMappingRepo,
 	}
 }
@@ -65,11 +74,11 @@ func (h *CheckoutHandler) HandleReturn(c echo.Context) error {
 	// 결제 성공 여부 확인
 	if s.Status == "complete" && s.PaymentStatus == "paid" {
 		// 성공 페이지로 리다이렉트
-		return c.Redirect(http.StatusFound, h.clientURL+"/?success=true")
+		return c.Redirect(http.StatusFound, h.resolveClientURL(c)+"/?success=true")
 	}
 
 	// 실패 또는 취소된 경우
-	return c.Redirect(http.StatusFound, h.clientURL+"/?canceled=true")
+	return c.Redirect(http.StatusFound, h.resolveClientURL(c)+"/?canceled=true")
 }
 
 type CreatePortalRequest struct {
@@ -90,7 +99,7 @@ func (h *CheckoutHandler) CreatePortalSession(c echo.Context) error {
 
 	params := &stripe.BillingPortalSessionParams{
 		Customer:  stripe.String(req.CustomerID),
-		ReturnURL: stripe.String(h.clientURL),
+		ReturnURL: stripe.String(h.resolveClientURL(c)),
 	}
 
 	ps, err := portalsession.New(params)
@@ -110,6 +119,16 @@ func (h *CheckoutHandler) CreatePortalSession(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{
 		"url": ps.URL,
 	})
+}
+
+func (h *CheckoutHandler) resolveClientURL(c echo.Context) string {
+	origin := c.Request().Header.Get("Origin")
+	if origin != "" {
+		if _, ok := h.allowedOrigins[origin]; ok {
+			return origin
+		}
+	}
+	return h.clientURL
 }
 
 // CheckSessionStatus retrieves the status of a checkout session

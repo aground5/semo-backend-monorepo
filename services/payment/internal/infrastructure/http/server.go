@@ -51,7 +51,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger, repos *database.Repositor
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{cfg.Service.ClientURL},
+		AllowOrigins: cfg.Service.AllowedClientOrigins(),
 		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE},
 	}))
 
@@ -98,8 +98,8 @@ func (s *Server) setupRoutes() {
 
 	// Initialize handlers
 	plansHandler := handlers.NewPlansHandler(s.logger, s.repos.Plan)
-	checkoutHandler := handlers.NewCheckoutHandler(s.logger, s.config.Service.ClientURL, s.repos.CustomerMapping)
-	subscriptionHandler := handlers.NewSubscriptionHandler(s.logger, subscriptionService, s.repos.CustomerMapping, s.config.Service.ClientURL)
+	checkoutHandler := handlers.NewCheckoutHandler(s.logger, s.config.Service.PrimaryClientURL(), s.config.Service.AllowedClientOrigins(), s.repos.CustomerMapping)
+	subscriptionHandler := handlers.NewSubscriptionHandler(s.logger, subscriptionService, s.repos.CustomerMapping, s.config.Service.PrimaryClientURL())
 	webhookHandler := handlers.NewWebhookHandler(s.logger, s.config.Service.StripeWebhookSecret, s.repos.Webhook, s.repos.Subscription, s.repos.Payment, s.repos.CustomerMapping, s.repos.Credit, s.repos.Plan)
 	paymentUsecase := usecase.NewPaymentUsecase(s.repos.Payment, nil, s.logger)
 	paymentHandler := handlers.NewPaymentHandler(paymentUsecase, s.logger)
@@ -141,8 +141,8 @@ func (s *Server) setupRoutes() {
 
 	// One-time payment - RESTful style (all require authentication)
 	products := protected.Group("/products")
-	products.POST("", productHandler.CreatePayment)           // Provider-based payment creation
-	products.POST("/confirm", productHandler.ConfirmPayment)  // Provider payment confirmation
+	products.POST("", productHandler.CreatePayment)          // Provider-based payment creation
+	products.POST("/confirm", productHandler.ConfirmPayment) // Provider payment confirmation
 
 	// Checkout session status endpoint (requires authentication)
 	protected.GET("/checkout/session/:sessionId", checkoutHandler.CheckSessionStatus)
@@ -161,6 +161,6 @@ func (s *Server) setupRoutes() {
 	internal.GET("/webhook-data", webhookHandler.GetWebhookData)
 
 	// Webhook routes (outside API versioning)
-	s.echo.POST("/webhook", webhookHandler.HandleWebhook)        // Stripe webhook
-	s.echo.POST("/webhook/toss", tossWebhookHandler.Handle)      // Toss webhook
+	s.echo.POST("/webhook", webhookHandler.HandleWebhook)   // Stripe webhook
+	s.echo.POST("/webhook/toss", tossWebhookHandler.Handle) // Toss webhook
 }
