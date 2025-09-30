@@ -61,7 +61,7 @@ func (h *CreditHandler) GetUserCredits(c echo.Context) error {
 	// Get user's credit balance
 	balance, err := h.creditService.GetBalance(c.Request().Context(), universalID)
 	if err != nil {
-		h.logger.Error("Failed to get user credit balance", 
+		h.logger.Error("Failed to get user credit balance",
 			zap.String("universal_id", universalID.String()),
 			zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -282,6 +282,7 @@ func (h *CreditHandler) UseCredits(c echo.Context) error {
 	transaction, err := h.creditService.UseCredits(
 		c.Request().Context(),
 		universalID,
+		req.ServiceProvider,
 		amount,
 		req.FeatureName,
 		req.Description,
