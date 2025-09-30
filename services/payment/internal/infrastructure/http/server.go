@@ -11,6 +11,7 @@ import (
 	"github.com/stripe/stripe-go/v79"
 	handlers "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/handler/http"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/config"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/model"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/database"
 	providerFactory "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/provider"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/middleware/auth"
@@ -91,8 +92,8 @@ func (s *Server) setupRoutes() {
 
 	// Initialize services
 	subscriptionService := usecase.NewSubscriptionService(s.repos.CustomerMapping, s.repos.Subscription, s.logger)
-	creditService := usecase.NewCreditService(s.repos.Credit, s.repos.Subscription, s.repos.Plan, s.logger)
-	creditTransactionService := usecase.NewCreditTransactionService(s.repos.CreditTransaction, s.logger)
+	creditService := usecase.NewCreditService(s.repos.Credit, s.repos.Subscription, s.repos.Plan, s.logger, model.ServiceProviderSemo)
+	creditTransactionService := usecase.NewCreditTransactionService(s.repos.CreditTransaction, s.logger, model.ServiceProviderSemo)
 	workspaceVerificationService := usecase.NewWorkspaceVerificationService(s.repos.WorkspaceVerification, s.logger)
 	productUseCase := usecase.NewProductUseCase(s.repos.Payment, s.logger)
 
@@ -100,7 +101,7 @@ func (s *Server) setupRoutes() {
 	plansHandler := handlers.NewPlansHandler(s.logger, s.repos.Plan)
 	checkoutHandler := handlers.NewCheckoutHandler(s.logger, s.config.Service.PrimaryClientURL(), s.config.Service.AllowedClientOrigins(), s.repos.CustomerMapping)
 	subscriptionHandler := handlers.NewSubscriptionHandler(s.logger, subscriptionService, s.repos.CustomerMapping, s.config.Service.PrimaryClientURL())
-	webhookHandler := handlers.NewWebhookHandler(s.logger, s.config.Service.StripeWebhookSecret, s.repos.Webhook, s.repos.Subscription, s.repos.Payment, s.repos.CustomerMapping, s.repos.Credit, s.repos.Plan)
+	webhookHandler := handlers.NewWebhookHandler(s.logger, s.config.Service.StripeWebhookSecret, s.repos.Webhook, s.repos.Subscription, s.repos.Payment, s.repos.CustomerMapping, s.repos.Credit, s.repos.Plan, model.ServiceProviderSemo)
 	paymentUsecase := usecase.NewPaymentUsecase(s.repos.Payment, nil, s.logger)
 	paymentHandler := handlers.NewPaymentHandler(paymentUsecase, s.logger)
 	creditHandler := handlers.NewCreditHandler(s.logger, creditService, creditTransactionService)

@@ -10,21 +10,21 @@ import (
 
 // Repositories holds all repository instances
 type Repositories struct {
-	Payment                 domainRepo.PaymentRepository
-	Subscription            domainRepo.SubscriptionRepository
-	CustomerMapping         domainRepo.CustomerMappingRepository
-	Credit                  domainRepo.CreditRepository
-	CreditTransaction       domainRepo.CreditTransactionRepository
-	Webhook                 repository.WebhookRepository
-	Plan                    repository.PlanRepository
-	WorkspaceVerification   domainRepo.WorkspaceVerificationRepository
+	Payment               domainRepo.PaymentRepository
+	Subscription          domainRepo.SubscriptionRepository
+	CustomerMapping       domainRepo.CustomerMappingRepository
+	Credit                domainRepo.CreditRepository
+	CreditTransaction     domainRepo.CreditTransactionRepository
+	Webhook               repository.WebhookRepository
+	Plan                  repository.PlanRepository
+	WorkspaceVerification domainRepo.WorkspaceVerificationRepository
 }
 
 // NewRepositories creates new repository instances with database connection
 func NewRepositories(db *gorm.DB, supabaseConfig *config.SupabaseConfig, logger *zap.Logger) *Repositories {
 	// Create customer mapping repository first as it's a dependency
 	customerMappingRepo := repository.NewCustomerMappingRepository(db)
-	
+
 	// Create credit repository as it's a dependency for subscription repository
 	creditRepo := repository.NewCreditRepository(db, logger)
 

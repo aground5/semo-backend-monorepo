@@ -20,6 +20,7 @@ type CreditService struct {
 	subscriptionRepo domainRepo.SubscriptionRepository
 	planRepo         repository.PlanRepository
 	logger           *zap.Logger
+	serviceProvider  string
 }
 
 // NewCreditService creates a new credit service instance
@@ -28,12 +29,17 @@ func NewCreditService(
 	subscriptionRepo domainRepo.SubscriptionRepository,
 	planRepo repository.PlanRepository,
 	logger *zap.Logger,
+	serviceProvider string,
 ) *CreditService {
+	if serviceProvider == "" {
+		logger.Error("CreditService initialized without service provider")
+	}
 	return &CreditService{
 		creditRepo:       creditRepo,
 		subscriptionRepo: subscriptionRepo,
 		planRepo:         planRepo,
 		logger:           logger,
+		serviceProvider:  serviceProvider,
 	}
 }
 
@@ -96,7 +102,7 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, universal
 		zap.String("description", description),
 		zap.String("reference_id", invoiceID))
 
-	balance, transaction, err := s.creditRepo.AllocateCredits(ctx, universalID, amount, description, invoiceID)
+	balance, transaction, err := s.creditRepo.AllocateCredits(ctx, universalID, s.serviceProvider, amount, description, invoiceID)
 	if err != nil {
 		s.logger.Error("CREDIT ALLOCATION FAILED IN REPOSITORY",
 			zap.String("universal_id", universalID.String()),
@@ -156,7 +162,7 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, univers
 		zap.String("description", description),
 		zap.String("reference_id", invoiceID))
 
-	balance, transaction, err := s.creditRepo.AllocateCredits(ctx, universalID, amount, description, invoiceID)
+	balance, transaction, err := s.creditRepo.AllocateCredits(ctx, universalID, s.serviceProvider, amount, description, invoiceID)
 	if err != nil {
 		s.logger.Error("CREDIT ALLOCATION WITH METADATA FAILED IN REPOSITORY",
 			zap.String("universal_id", universalID.String()),
@@ -180,7 +186,7 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, univers
 
 // GetBalance retrieves the current credit balance for a user
 func (s *CreditService) GetBalance(ctx context.Context, universalID uuid.UUID) (*model.UserCreditBalance, error) {
-	balance, err := s.creditRepo.GetBalance(ctx, universalID)
+	balance, err := s.creditRepo.GetBalance(ctx, universalID, s.serviceProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get balance: %w", err)
 	}
@@ -192,14 +198,14 @@ func (s *CreditService) GetBalance(ctx context.Context, universalID uuid.UUID) (
 func (s *CreditService) UseCredits(ctx context.Context, universalID uuid.UUID, amount decimal.Decimal, featureName string, description string, usageMetadata []byte, idempotencyKey *uuid.UUID) (*model.CreditTransaction, error) {
 	// For now, we'll use the existing UseCredits without idempotency key support
 	// TODO: Add idempotency key support to repository layer
-	
+
 	// First get the current balance to provide in error if insufficient
-	currentBalance, err := s.creditRepo.GetBalance(ctx, universalID)
+	currentBalance, err := s.creditRepo.GetBalance(ctx, universalID, s.serviceProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get balance: %w", err)
 	}
 
-	balance, transaction, err := s.creditRepo.UseCredits(ctx, universalID, amount, description, featureName)
+	balance, transaction, err := s.creditRepo.UseCredits(ctx, universalID, s.serviceProvider, amount, description, featureName)
 	if err != nil {
 		// Check if it's an insufficient balance error
 		if strings.Contains(err.Error(), "insufficient credit balance") {

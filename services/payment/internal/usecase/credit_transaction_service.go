@@ -16,16 +16,22 @@ import (
 type CreditTransactionService struct {
 	transactionRepo repository.CreditTransactionRepository
 	logger          *zap.Logger
+	serviceProvider string
 }
 
 // NewCreditTransactionService creates a new credit transaction service
 func NewCreditTransactionService(
 	transactionRepo repository.CreditTransactionRepository,
 	logger *zap.Logger,
+	serviceProvider string,
 ) *CreditTransactionService {
+	if serviceProvider == "" {
+		logger.Error("CreditTransactionService initialized without service provider")
+	}
 	return &CreditTransactionService{
 		transactionRepo: transactionRepo,
 		logger:          logger,
+		serviceProvider: serviceProvider,
 	}
 }
 
@@ -99,7 +105,7 @@ func (s *CreditTransactionService) GetUserTransactionHistory(
 
 // GetCreditBalance retrieves the current credit balance for a universal ID
 func (s *CreditTransactionService) GetCreditBalance(ctx context.Context, universalID uuid.UUID) (string, error) {
-	balance, err := s.transactionRepo.GetCreditBalance(ctx, universalID)
+	balance, err := s.transactionRepo.GetCreditBalance(ctx, universalID, s.serviceProvider)
 	if err != nil {
 		s.logger.Error("failed to get universal ID credit balance",
 			zap.String("universal_id", universalID.String()),
