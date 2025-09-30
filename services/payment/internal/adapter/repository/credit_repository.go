@@ -29,19 +29,20 @@ func NewCreditRepository(db *gorm.DB, logger *zap.Logger) domainRepo.CreditRepos
 }
 
 // GetBalance retrieves the current credit balance for a universal ID
-func (r *creditRepository) GetBalance(ctx context.Context, universalID uuid.UUID) (*model.UserCreditBalance, error) {
+func (r *creditRepository) GetBalance(ctx context.Context, universalID uuid.UUID, serviceProvider string) (*model.UserCreditBalance, error) {
 	var balance model.UserCreditBalance
 
 	err := r.db.WithContext(ctx).
-		Where("universal_id = ?", universalID).
+		Where("universal_id = ? AND service_provider = ?", universalID, serviceProvider).
 		First(&balance).Error
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// Return zero balance if not found
 			return &model.UserCreditBalance{
-				UniversalID:    universalID,
-				CurrentBalance: decimal.Zero,
+				UniversalID:     universalID,
+				ServiceProvider: serviceProvider,
+				CurrentBalance:  decimal.Zero,
 			}, nil
 		}
 		r.logger.Error("Failed to get credit balance",
@@ -50,11 +51,12 @@ func (r *creditRepository) GetBalance(ctx context.Context, universalID uuid.UUID
 		return nil, fmt.Errorf("failed to get credit balance: %w", err)
 	}
 
+	balance.ServiceProvider = serviceProvider
 	return &balance, nil
 }
 
 // AllocateCredits adds credits to a universal ID's balance atomically
-func (r *creditRepository) AllocateCredits(ctx context.Context, universalID uuid.UUID, amount decimal.Decimal, description string, referenceID string) (*model.UserCreditBalance, *model.CreditTransaction, error) {
+func (r *creditRepository) AllocateCredits(ctx context.Context, universalID uuid.UUID, serviceProvider string, amount decimal.Decimal, description string, referenceID string) (*model.UserCreditBalance, *model.CreditTransaction, error) {
 	var balance *model.UserCreditBalance
 	var transaction *model.CreditTransaction
 
@@ -75,7 +77,8 @@ func (r *creditRepository) AllocateCredits(ctx context.Context, universalID uuid
 
 				// Get current balance
 				var currentBalance model.UserCreditBalance
-				if err := tx.Where("universal_id = ?", universalID).First(&currentBalance).Error; err == nil {
+				if err := tx.Where("universal_id = ? AND service_provider = ?", universalID, serviceProvider).First(&currentBalance).Error; err == nil {
+					currentBalance.ServiceProvider = serviceProvider
 					balance = &currentBalance
 				}
 
@@ -93,10 +96,11 @@ func (r *creditRepository) AllocateCredits(ctx context.Context, universalID uuid
 			zap.String("transaction_type", "credit_allocation"))
 
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("universal_id = ?", universalID).
+			Where("universal_id = ? AND service_provider = ?", universalID, serviceProvider).
 			FirstOrCreate(&currentBalance, model.UserCreditBalance{
-				UniversalID:    universalID,
-				CurrentBalance: decimal.Zero,
+				UniversalID:     universalID,
+				ServiceProvider: serviceProvider,
+				CurrentBalance:  decimal.Zero,
 			}).Error
 
 		if err != nil {
@@ -105,6 +109,7 @@ func (r *creditRepository) AllocateCredits(ctx context.Context, universalID uuid
 				zap.Error(err))
 			return fmt.Errorf("failed to lock balance: %w", err)
 		}
+		currentBalance.ServiceProvider = serviceProvider
 
 		r.logger.Info("Successfully locked/created balance row",
 			zap.String("universal_id", universalID.String()),
@@ -169,11 +174,14 @@ func (r *creditRepository) AllocateCredits(ctx context.Context, universalID uuid
 		zap.String("new_balance", balance.CurrentBalance.String()),
 		zap.String("reference_id", referenceID))
 
+	if balance != nil {
+		balance.ServiceProvider = serviceProvider
+	}
 	return balance, transaction, nil
 }
 
 // UseCredits deducts credits from a universal ID's balance atomically
-func (r *creditRepository) UseCredits(ctx context.Context, universalID uuid.UUID, amount decimal.Decimal, description string, featureName string) (*model.UserCreditBalance, *model.CreditTransaction, error) {
+func (r *creditRepository) UseCredits(ctx context.Context, universalID uuid.UUID, serviceProvider string, amount decimal.Decimal, description string, featureName string) (*model.UserCreditBalance, *model.CreditTransaction, error) {
 	var balance *model.UserCreditBalance
 	var transaction *model.CreditTransaction
 
@@ -181,7 +189,7 @@ func (r *creditRepository) UseCredits(ctx context.Context, universalID uuid.UUID
 		// Lock the user's balance row for update
 		var currentBalance model.UserCreditBalance
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("universal_id = ?", universalID).
+			Where("universal_id = ? AND service_provider = ?", universalID, serviceProvider).
 			First(&currentBalance).Error
 
 		if err != nil {
@@ -217,6 +225,7 @@ func (r *creditRepository) UseCredits(ctx context.Context, universalID uuid.UUID
 		// Update balance
 		currentBalance.CurrentBalance = newBalance
 		currentBalance.LastTransactionAt = transaction.CreatedAt
+		currentBalance.ServiceProvider = serviceProvider
 
 		r.logger.Info("Updating user_credit_balances table",
 			zap.String("universal_id", universalID.String()),
@@ -255,6 +264,9 @@ func (r *creditRepository) UseCredits(ctx context.Context, universalID uuid.UUID
 		zap.String("new_balance", balance.CurrentBalance.String()),
 		zap.String("feature", featureName))
 
+	if balance != nil {
+		balance.ServiceProvider = serviceProvider
+	}
 	return balance, transaction, nil
 }
 

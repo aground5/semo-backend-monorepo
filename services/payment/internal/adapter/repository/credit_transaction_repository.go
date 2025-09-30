@@ -30,7 +30,7 @@ func NewCreditTransactionRepository(db *gorm.DB, logger *zap.Logger) repository.
 // GetTransactions retrieves credit transactions with filters
 func (r *creditTransactionRepository) GetTransactions(ctx context.Context, filters dto.TransactionFilters) ([]model.CreditTransaction, error) {
 	var transactions []model.CreditTransaction
-	
+
 	query := r.db.WithContext(ctx).
 		Where("universal_id = ?", filters.UserID).
 		Order("created_at DESC")
@@ -64,7 +64,7 @@ func (r *creditTransactionRepository) GetTransactions(ctx context.Context, filte
 // CountTransactions counts the total number of transactions matching the filters
 func (r *creditTransactionRepository) CountTransactions(ctx context.Context, filters dto.TransactionFilters) (int64, error) {
 	var count int64
-	
+
 	query := r.db.WithContext(ctx).
 		Model(&model.CreditTransaction{}).
 		Where("universal_id = ?", filters.UserID)
@@ -93,13 +93,13 @@ func (r *creditTransactionRepository) CountTransactions(ctx context.Context, fil
 }
 
 // GetCreditBalance retrieves the current credit balance for a universal ID
-func (r *creditTransactionRepository) GetCreditBalance(ctx context.Context, universalID uuid.UUID) (*model.UserCreditBalance, error) {
+func (r *creditTransactionRepository) GetCreditBalance(ctx context.Context, universalID uuid.UUID, serviceProvider string) (*model.UserCreditBalance, error) {
 	var balance model.UserCreditBalance
-	
+
 	err := r.db.WithContext(ctx).
-		Where("universal_id = ?", universalID).
+		Where("universal_id = ? AND service_provider = ?", universalID, serviceProvider).
 		First(&balance).Error
-	
+
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
@@ -110,5 +110,6 @@ func (r *creditTransactionRepository) GetCreditBalance(ctx context.Context, univ
 		return nil, fmt.Errorf("failed to get universal ID credit balance: %w", err)
 	}
 
+	balance.ServiceProvider = serviceProvider
 	return &balance, nil
 }

@@ -28,6 +28,7 @@ type WebhookHandler struct {
 	customerMappingRepo domainRepo.CustomerMappingRepository
 	creditService       *usecase.CreditService
 	planSyncService     *usecase.PlanSyncService
+	serviceProvider     string
 	subscriptions       map[string]*entity.Subscription
 	payments            []PaymentData
 	mu                  sync.RWMutex
@@ -42,9 +43,9 @@ type PaymentData struct {
 	CreatedAt      time.Time
 }
 
-func NewWebhookHandler(logger *zap.Logger, webhookSecret string, webhookRepo repository.WebhookRepository, subscriptionRepo domainRepo.SubscriptionRepository, paymentRepo domainRepo.PaymentRepository, customerMappingRepo domainRepo.CustomerMappingRepository, creditRepo domainRepo.CreditRepository, planRepo repository.PlanRepository) *WebhookHandler {
+func NewWebhookHandler(logger *zap.Logger, webhookSecret string, webhookRepo repository.WebhookRepository, subscriptionRepo domainRepo.SubscriptionRepository, paymentRepo domainRepo.PaymentRepository, customerMappingRepo domainRepo.CustomerMappingRepository, creditRepo domainRepo.CreditRepository, planRepo repository.PlanRepository, serviceProvider string) *WebhookHandler {
 	planSyncService := usecase.NewPlanSyncService(planRepo, logger)
-	creditService := usecase.NewCreditService(creditRepo, subscriptionRepo, planRepo, logger)
+	creditService := usecase.NewCreditService(creditRepo, subscriptionRepo, planRepo, logger, serviceProvider)
 
 	return &WebhookHandler{
 		logger:              logger,
@@ -55,6 +56,7 @@ func NewWebhookHandler(logger *zap.Logger, webhookSecret string, webhookRepo rep
 		customerMappingRepo: customerMappingRepo,
 		creditService:       creditService,
 		planSyncService:     planSyncService,
+		serviceProvider:     serviceProvider,
 		subscriptions:       make(map[string]*entity.Subscription),
 		payments:            make([]PaymentData, 0),
 	}
@@ -114,97 +116,97 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 
 	switch event.Type {
 	case stripe.EventTypeSetupIntentSucceeded:
-    var setupIntent stripe.SetupIntent
-    if err := json.Unmarshal(event.Data.Raw, &setupIntent); err != nil {
-        h.logger.Error("Error parsing setup intent", zap.Error(err))
-        return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
-    }
+		var setupIntent stripe.SetupIntent
+		if err := json.Unmarshal(event.Data.Raw, &setupIntent); err != nil {
+			h.logger.Error("Error parsing setup intent", zap.Error(err))
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Error parsing webhook"})
+		}
 
-    h.logger.Info("SETUP INTENT SUCCEEDED",
-        zap.String("setup_intent_id", setupIntent.ID),
-        zap.String("payment_method", setupIntent.PaymentMethod.ID),
-    )
+		h.logger.Info("SETUP INTENT SUCCEEDED",
+			zap.String("setup_intent_id", setupIntent.ID),
+			zap.String("payment_method", setupIntent.PaymentMethod.ID),
+		)
 
-    // Customer가 없으면 처리하지 않음
-    if setupIntent.Customer == nil || setupIntent.Customer.ID == "" {
-        h.logger.Info("No customer associated with setup intent")
-        return c.JSON(http.StatusOK, echo.Map{"received": true})
-    }
+		// Customer가 없으면 처리하지 않음
+		if setupIntent.Customer == nil || setupIntent.Customer.ID == "" {
+			h.logger.Info("No customer associated with setup intent")
+			return c.JSON(http.StatusOK, echo.Map{"received": true})
+		}
 
-    // Extract user_id, email, and payment mode from metadata
-    var universalID string
-    var userEmail string
-    var paymentMode string // "subscription" or "payment"
-    
-    if setupIntent.Metadata != nil {
-        if uid, ok := setupIntent.Metadata["user_id"]; ok {
-            universalID = uid
-            h.logger.Info("Found user_id in setup intent metadata",
-                zap.String("universal_id", universalID),
-                zap.String("setup_intent_id", setupIntent.ID))
-        }
-        
-        // metadata에서 email 정보 추출 (프론트엔드에서 설정 필요)
-        if email, ok := setupIntent.Metadata["email"]; ok {
-            userEmail = email
-        }
-        
-        // metadata에서 mode 정보 추출
-        if mode, ok := setupIntent.Metadata["mode"]; ok {
-            paymentMode = mode
-        }
-    }
+		// Extract user_id, email, and payment mode from metadata
+		var universalID string
+		var userEmail string
+		var paymentMode string // "subscription" or "payment"
 
-    customerID := setupIntent.Customer.ID
+		if setupIntent.Metadata != nil {
+			if uid, ok := setupIntent.Metadata["user_id"]; ok {
+				universalID = uid
+				h.logger.Info("Found user_id in setup intent metadata",
+					zap.String("universal_id", universalID),
+					zap.String("setup_intent_id", setupIntent.ID))
+			}
 
-    h.logger.Info("Setup intent details",
-        zap.String("customer_id", customerID),
-        zap.String("email", userEmail),
-        zap.String("mode", paymentMode),
-    )
+			// metadata에서 email 정보 추출 (프론트엔드에서 설정 필요)
+			if email, ok := setupIntent.Metadata["email"]; ok {
+				userEmail = email
+			}
 
-			if paymentMode == "payment" {
-        // 일회성 결제일 때만 여기서 CustomerMapping 저장
-        if universalID != "" && isValidUUID(universalID) && h.customerMappingRepo != nil {
-            customerMapping := &entity.CustomerMapping{
-                StripeCustomerID: customerID,
-                UniversalID:      universalID,
-                Email:            userEmail,
-            }
+			// metadata에서 mode 정보 추출
+			if mode, ok := setupIntent.Metadata["mode"]; ok {
+				paymentMode = mode
+			}
+		}
 
-            h.logger.Info("Creating customer mapping from one-time payment",
-                zap.String("customer_id", customerID),
-                zap.String("universal_id", universalID),
-                zap.String("email", userEmail))
+		customerID := setupIntent.Customer.ID
 
-            // Check if mapping already exists
-            existing, _ := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), customerID)
-            if existing == nil {
-                if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
-                    h.logger.Error("Failed to save customer mapping",
-                        zap.String("customer_id", customerID),
-                        zap.String("universal_id", universalID),
-                        zap.String("email", userEmail),
-                        zap.Error(err))
-                } else {
-                    h.logger.Info("Customer mapping saved successfully",
-                        zap.String("customer_id", customerID),
-                        zap.String("universal_id", universalID),
-                        zap.String("email", userEmail))
-                }
-            } else {
-                h.logger.Info("Customer mapping already exists",
-                    zap.String("customer_id", customerID),
-                    zap.String("existing_email", existing.Email))
-            }
-        }
-    } else {
-        h.logger.Warn("Unknown payment mode or mode not specified",
-            zap.String("mode", paymentMode),
-            zap.String("customer_id", customerID))
-    }
+		h.logger.Info("Setup intent details",
+			zap.String("customer_id", customerID),
+			zap.String("email", userEmail),
+			zap.String("mode", paymentMode),
+		)
 
-    return c.JSON(http.StatusOK, echo.Map{"received": true})
+		if paymentMode == "payment" {
+			// 일회성 결제일 때만 여기서 CustomerMapping 저장
+			if universalID != "" && isValidUUID(universalID) && h.customerMappingRepo != nil {
+				customerMapping := &entity.CustomerMapping{
+					StripeCustomerID: customerID,
+					UniversalID:      universalID,
+					Email:            userEmail,
+				}
+
+				h.logger.Info("Creating customer mapping from one-time payment",
+					zap.String("customer_id", customerID),
+					zap.String("universal_id", universalID),
+					zap.String("email", userEmail))
+
+				// Check if mapping already exists
+				existing, _ := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), customerID)
+				if existing == nil {
+					if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
+						h.logger.Error("Failed to save customer mapping",
+							zap.String("customer_id", customerID),
+							zap.String("universal_id", universalID),
+							zap.String("email", userEmail),
+							zap.Error(err))
+					} else {
+						h.logger.Info("Customer mapping saved successfully",
+							zap.String("customer_id", customerID),
+							zap.String("universal_id", universalID),
+							zap.String("email", userEmail))
+					}
+				} else {
+					h.logger.Info("Customer mapping already exists",
+						zap.String("customer_id", customerID),
+						zap.String("existing_email", existing.Email))
+				}
+			}
+		} else {
+			h.logger.Warn("Unknown payment mode or mode not specified",
+				zap.String("mode", paymentMode),
+				zap.String("customer_id", customerID))
+		}
+
+		return c.JSON(http.StatusOK, echo.Map{"received": true})
 
 	case stripe.EventTypeCustomerSubscriptionCreated, stripe.EventTypeCustomerSubscriptionUpdated:
 		var rawData map[string]interface{}
@@ -233,17 +235,17 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 
 		var productID string
 		if items, ok := rawData["items"].(map[string]interface{}); ok {
-				if data, ok := items["data"].([]interface{}); ok && len(data) > 0 {
-						if item, ok := data[0].(map[string]interface{}); ok {
-								if price, ok := item["price"].(map[string]interface{}); ok {
-										if product, ok := price["product"].(string); ok {
-												productID = product
-												h.logger.Info("Extracted product ID for plan_id",
-														zap.String("product_id", productID))
-										}
-								}
+			if data, ok := items["data"].([]interface{}); ok && len(data) > 0 {
+				if item, ok := data[0].(map[string]interface{}); ok {
+					if price, ok := item["price"].(map[string]interface{}); ok {
+						if product, ok := price["product"].(string); ok {
+							productID = product
+							h.logger.Info("Extracted product ID for plan_id",
+								zap.String("product_id", productID))
 						}
+					}
 				}
+			}
 		}
 
 		h.logger.Info("SUBSCRIPTION CREATED/UPDATED",
@@ -300,15 +302,15 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			}
 
 			subscription := &entity.Subscription{
-        ID:               subscriptionID,
-        CustomerID:       customerID,
-        CustomerEmail:    customerEmail,
-        Status:           status,
-        CurrentPeriodEnd: time.Unix(currentPeriodEnd, 0),
-        PlanID:           &productID,
-        CreatedAt:        time.Now(),
-        UpdatedAt:        time.Now(),
-    }
+				ID:               subscriptionID,
+				CustomerID:       customerID,
+				CustomerEmail:    customerEmail,
+				Status:           status,
+				CurrentPeriodEnd: time.Unix(currentPeriodEnd, 0),
+				PlanID:           &productID,
+				CreatedAt:        time.Now(),
+				UpdatedAt:        time.Now(),
+			}
 
 			// If we have a valid user ID, save customer mapping
 			if universalID != "" && isValidUUID(universalID) && h.customerMappingRepo != nil {
@@ -361,19 +363,19 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 							if product, ok := price["product"].(string); ok {
 								subscription.ProductName = product
 							}
-							
+
 							// Extract amount
 							if unitAmount, ok := price["unit_amount"].(float64); ok {
 								subscription.Amount = int64(unitAmount)
 							}
-							
+
 							// Extract currency
 							if currency, ok := price["currency"].(string); ok {
 								subscription.Currency = currency
 							} else {
 								subscription.Currency = "KRW" // Default
 							}
-							
+
 							// Extract recurring interval information
 							if recurring, ok := price["recurring"].(map[string]interface{}); ok {
 								if interval, ok := recurring["interval"].(string); ok {
@@ -401,11 +403,11 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 				}
 
 				if existing != nil {
-					h.logger.Info("Subscription already exists, updating...", 
+					h.logger.Info("Subscription already exists, updating...",
 						zap.String("subscription_id", subscriptionID))
 					err = h.subscriptionRepo.Update(ctx, subscription)
 				} else {
-					h.logger.Info("Creating new subscription", 
+					h.logger.Info("Creating new subscription",
 						zap.String("subscription_id", subscriptionID))
 					err = h.subscriptionRepo.Save(ctx, subscription)
 				}
@@ -501,7 +503,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 						}
 					}
 				}
-				
+
 				// Path 2: parent.subscription_item_details.subscription
 				if extractedSubscriptionID == "" {
 					if parent, ok := rawInvoice["parent"].(map[string]interface{}); ok {
@@ -516,7 +518,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 						}
 					}
 				}
-				
+
 				// Path 3: parent.subscription_details.subscription
 				if extractedSubscriptionID == "" {
 					if parent, ok := rawInvoice["parent"].(map[string]interface{}); ok {
@@ -531,7 +533,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 						}
 					}
 				}
-				
+
 				// Path 4: Check in line items for subscription field
 				if extractedSubscriptionID == "" {
 					if lines, ok := rawInvoice["lines"].(map[string]interface{}); ok {
@@ -558,20 +560,20 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 						}
 					}
 				}
-				
+
 				// Log what paths we've checked if still no subscription ID
 				if extractedSubscriptionID == "" {
 					h.logger.Warn("Could not find subscription ID in any known paths",
 						zap.Bool("has_subscription_field", rawInvoice["subscription"] != nil),
 						zap.Bool("has_parent", rawInvoice["parent"] != nil))
-					
+
 					// Debug: Log the structure to find where subscription ID might be
 					if parent, ok := rawInvoice["parent"]; ok && parent != nil {
 						if parentMap, ok := parent.(map[string]interface{}); ok {
 							h.logger.Debug("Parent object structure", zap.Any("parent_keys", getMapKeys(parentMap)))
 						}
 					}
-					
+
 					// Also check and log top-level keys
 					h.logger.Debug("Top-level invoice keys", zap.Any("keys", getMapKeys(rawInvoice)))
 				}
