@@ -195,17 +195,24 @@ func (s *CreditService) GetBalance(ctx context.Context, universalID uuid.UUID) (
 }
 
 // UseCredits deducts credits for a specific feature
-func (s *CreditService) UseCredits(ctx context.Context, universalID uuid.UUID, amount decimal.Decimal, featureName string, description string, usageMetadata []byte, idempotencyKey *uuid.UUID) (*model.CreditTransaction, error) {
+func (s *CreditService) UseCredits(ctx context.Context, universalID uuid.UUID, serviceProvider string, amount decimal.Decimal, featureName string, description string, usageMetadata []byte, idempotencyKey *uuid.UUID) (*model.CreditTransaction, error) {
 	// For now, we'll use the existing UseCredits without idempotency key support
 	// TODO: Add idempotency key support to repository layer
 
+	provider := serviceProvider
+	if provider == "" {
+		provider = s.serviceProvider
+		s.logger.Warn("UseCredits called without service provider; falling back to default",
+			zap.String("universal_id", universalID.String()))
+	}
+
 	// First get the current balance to provide in error if insufficient
-	currentBalance, err := s.creditRepo.GetBalance(ctx, universalID, s.serviceProvider)
+	currentBalance, err := s.creditRepo.GetBalance(ctx, universalID, provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get balance: %w", err)
 	}
 
-	balance, transaction, err := s.creditRepo.UseCredits(ctx, universalID, s.serviceProvider, amount, description, featureName)
+	balance, transaction, err := s.creditRepo.UseCredits(ctx, universalID, provider, amount, description, featureName)
 	if err != nil {
 		// Check if it's an insufficient balance error
 		if strings.Contains(err.Error(), "insufficient credit balance") {
@@ -217,6 +224,7 @@ func (s *CreditService) UseCredits(ctx context.Context, universalID uuid.UUID, a
 	// Log the successful usage
 	s.logger.Info("Credits used successfully",
 		zap.String("universal_id", universalID.String()),
+		zap.String("service_provider", provider),
 		zap.String("amount", amount.String()),
 		zap.String("feature", featureName),
 		zap.String("balance_after", balance.CurrentBalance.String()),
