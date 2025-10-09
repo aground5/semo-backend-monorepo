@@ -27,12 +27,13 @@ func (r *customerMappingRepository) modelToEntity(m *model.CustomerMapping) *ent
 		return nil
 	}
 	return &entity.CustomerMapping{
-		ID:               m.ID,
-		StripeCustomerID: m.ProviderCustomerID,
-		UniversalID:      m.UniversalID.String(),
-		Email:            m.CustomerEmail,
-		CreatedAt:        m.CreatedAt,
-		UpdatedAt:        m.UpdatedAt,
+		ID:                 m.ID,
+		Provider:           m.Provider,
+		ProviderCustomerID: m.ProviderCustomerID,
+		UniversalID:        m.UniversalID.String(),
+		Email:              m.CustomerEmail,
+		CreatedAt:          m.CreatedAt,
+		UpdatedAt:          m.UpdatedAt,
 	}
 }
 
@@ -48,12 +49,13 @@ func (r *customerMappingRepository) entityToModel(e *entity.CustomerMapping) (*m
 	}
 
 	return &model.CustomerMapping{
-		ID:               e.ID,
-		ProviderCustomerID: e.StripeCustomerID,
-		UniversalID:      userUUID,
-		CustomerEmail:    e.Email,
-		CreatedAt:        e.CreatedAt,
-		UpdatedAt:        e.UpdatedAt,
+		ID:                 e.ID,
+		Provider:           e.Provider,
+		ProviderCustomerID: e.ProviderCustomerID,
+		UniversalID:        userUUID,
+		CustomerEmail:      e.Email,
+		CreatedAt:          e.CreatedAt,
+		UpdatedAt:          e.UpdatedAt,
 	}, nil
 }
 
@@ -65,9 +67,9 @@ func (r *customerMappingRepository) Create(ctx context.Context, mapping *entity.
 	return r.db.WithContext(ctx).Create(modelMapping).Error
 }
 
-func (r *customerMappingRepository) GetByStripeCustomerID(ctx context.Context, stripeCustomerID string) (*entity.CustomerMapping, error) {
+func (r *customerMappingRepository) GetByProviderCustomerID(ctx context.Context, provider string, providerCustomerID string) (*entity.CustomerMapping, error) {
 	var mapping model.CustomerMapping
-	err := r.db.WithContext(ctx).Where("provider_customer_id = ?", stripeCustomerID).First(&mapping).Error
+	err := r.db.WithContext(ctx).Where("provider = ? AND provider_customer_id = ?", provider, providerCustomerID).First(&mapping).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -77,7 +79,7 @@ func (r *customerMappingRepository) GetByStripeCustomerID(ctx context.Context, s
 	return r.modelToEntity(&mapping), nil
 }
 
-func (r *customerMappingRepository) GetByUniversalID(ctx context.Context, universalID string) (*entity.CustomerMapping, error) {
+func (r *customerMappingRepository) GetByProviderAndUniversalID(ctx context.Context, provider string, universalID string) (*entity.CustomerMapping, error) {
 	// Parse universalID to ensure it's a valid UUID
 	universalUUID, err := uuid.Parse(universalID)
 	if err != nil {
@@ -85,7 +87,7 @@ func (r *customerMappingRepository) GetByUniversalID(ctx context.Context, univer
 	}
 
 	var mapping model.CustomerMapping
-	err = r.db.WithContext(ctx).Where("universal_id = ?", universalUUID).First(&mapping).Error
+	err = r.db.WithContext(ctx).Where("provider = ? AND universal_id = ?", provider, universalUUID).First(&mapping).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil

@@ -13,6 +13,7 @@ import (
 	"github.com/stripe/stripe-go/v79/subscription"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
 	domainErrors "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/errors"
+	domainProvider "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/provider"
 	domainRepo "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/middleware/auth"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/usecase"
@@ -20,23 +21,25 @@ import (
 )
 
 type SubscriptionHandler struct {
-	logger               *zap.Logger
-	subscriptionService  *usecase.SubscriptionService
-	customerMappingRepo  domainRepo.CustomerMappingRepository  // 추가
-	clientURL            string                               // 추가
+	logger              *zap.Logger
+	subscriptionService *usecase.SubscriptionService
+	customerMappingRepo domainRepo.CustomerMappingRepository // 추가
+	clientURL           string                               // 추가
 }
 
+const stripeProvider = string(domainProvider.ProviderTypeStripe)
+
 func NewSubscriptionHandler(
-	logger *zap.Logger, 
+	logger *zap.Logger,
 	subscriptionService *usecase.SubscriptionService,
-	customerMappingRepo domainRepo.CustomerMappingRepository,  // 추가
-	clientURL string,                                          // 추가
+	customerMappingRepo domainRepo.CustomerMappingRepository, // 추가
+	clientURL string, // 추가
 ) *SubscriptionHandler {
 	return &SubscriptionHandler{
-		logger:               logger,
-		subscriptionService:  subscriptionService,
-		customerMappingRepo:  customerMappingRepo,              // 추가
-		clientURL:            clientURL,                        // 추가
+		logger:              logger,
+		subscriptionService: subscriptionService,
+		customerMappingRepo: customerMappingRepo, // 추가
+		clientURL:           clientURL,           // 추가
 	}
 }
 
@@ -58,7 +61,7 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 			// Customer mapping doesn't exist - create it lazily
 			h.logger.Info("No customer mapping found, creating one",
 				zap.String("universal_id", user.UniversalID))
-			
+
 			// Create customer mapping with user's email
 			if err := h.getOrCreateCustomerMapping(c, user); err != nil {
 				h.logger.Error("Failed to create customer mapping",
@@ -68,7 +71,7 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 					"error": "Failed to initialize customer account",
 				})
 			}
-			
+
 			// Return HTTP 204 No Content (no active subscription)
 			return c.NoContent(http.StatusNoContent)
 		}
@@ -156,8 +159,11 @@ func (h *SubscriptionHandler) GetCurrentSubscription(c echo.Context) error {
 // getOrCreateCustomerMapping ensures a Stripe customer exists for the authenticated user
 func (h *SubscriptionHandler) getOrCreateCustomerMapping(c echo.Context, user *auth.AuthUser) error {
 	// Check if we already have a Stripe customer for this user
-	existingMapping, err := h.customerMappingRepo.GetByUniversalID(c.Request().Context(), user.UniversalID)
-	if err == nil && existingMapping != nil {
+	existingMapping, err := h.customerMappingRepo.GetByProviderAndUniversalID(c.Request().Context(), stripeProvider, user.UniversalID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve customer mapping: %w", err)
+	}
+	if existingMapping != nil {
 		// Customer mapping already exists
 		return nil
 	}
@@ -181,9 +187,10 @@ func (h *SubscriptionHandler) getOrCreateCustomerMapping(c echo.Context, user *a
 
 	// Save customer mapping
 	mapping := &entity.CustomerMapping{
-		UniversalID:      user.UniversalID,
-		StripeCustomerID: stripeCustomer.ID,
-		Email:            user.Email,
+		Provider:           stripeProvider,
+		ProviderCustomerID: stripeCustomer.ID,
+		UniversalID:        user.UniversalID,
+		Email:              user.Email,
 	}
 	if err := h.customerMappingRepo.Create(c.Request().Context(), mapping); err != nil {
 		return fmt.Errorf("failed to save customer mapping: %w", err)
@@ -227,13 +234,13 @@ func (h *SubscriptionHandler) CreateSubscription(c echo.Context) error {
 	// Check if we already have a Stripe customer for this user
 	var customerID string
 	if h.customerMappingRepo != nil {
-		existingMapping, err := h.customerMappingRepo.GetByUniversalID(c.Request().Context(), user.UniversalID)
+		existingMapping, err := h.customerMappingRepo.GetByProviderAndUniversalID(c.Request().Context(), stripeProvider, user.UniversalID)
 		if err != nil {
 			h.logger.Warn("Error checking for existing customer mapping",
 				zap.String("universal_id", user.UniversalID),
 				zap.Error(err))
 		} else if existingMapping != nil {
-			customerID = existingMapping.StripeCustomerID
+			customerID = existingMapping.ProviderCustomerID
 			h.logger.Info("Found existing Stripe customer",
 				zap.String("customer_id", customerID),
 				zap.String("universal_id", user.UniversalID))
@@ -275,8 +282,10 @@ func (h *SubscriptionHandler) CreateSubscription(c echo.Context) error {
 			}
 
 			mapping := &entity.CustomerMapping{
-				UniversalID:      parsedUniversalID.String(),
-				StripeCustomerID: customerID,
+				Provider:           stripeProvider,
+				ProviderCustomerID: customerID,
+				UniversalID:        parsedUniversalID.String(),
+				Email:              req.Email,
 			}
 			if err := h.customerMappingRepo.Create(c.Request().Context(), mapping); err != nil {
 				h.logger.Warn("Failed to save customer mapping",
@@ -376,7 +385,7 @@ func (h *SubscriptionHandler) CancelCurrentSubscription(c echo.Context) error {
 		h.logger.Error("Failed to cancel subscription",
 			zap.String("universal_id", user.UniversalID),
 			zap.Error(err))
-		
+
 		// Handle specific error cases
 		if errors.Is(err, domainErrors.ErrNoCustomerMapping) {
 			return c.JSON(http.StatusNotFound, echo.Map{
@@ -392,7 +401,7 @@ func (h *SubscriptionHandler) CancelCurrentSubscription(c echo.Context) error {
 				"code":    "NO_ACTIVE_SUBSCRIPTION",
 			})
 		}
-		
+
 		return c.JSON(http.StatusInternalServerError, echo.Map{
 			"error": "Failed to cancel subscription",
 			"code":  "CANCELLATION_FAILED",
@@ -455,7 +464,7 @@ func (h *SubscriptionHandler) CancelCurrentSubscription(c echo.Context) error {
 			Interval:          interval,
 			IntervalCount:     intervalCount,
 		},
-		"message": "Subscription will be canceled at the end of the current billing period",
+		"message":   "Subscription will be canceled at the end of the current billing period",
 		"cancel_at": time.Unix(updatedSub.CurrentPeriodEnd, 0).Format(time.RFC3339),
 	})
 }

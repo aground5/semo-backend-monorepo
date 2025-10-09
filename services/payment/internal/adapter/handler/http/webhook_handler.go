@@ -169,9 +169,10 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			// 일회성 결제일 때만 여기서 CustomerMapping 저장
 			if universalID != "" && isValidUUID(universalID) && h.customerMappingRepo != nil {
 				customerMapping := &entity.CustomerMapping{
-					StripeCustomerID: customerID,
-					UniversalID:      universalID,
-					Email:            userEmail,
+					Provider:           stripeProvider,
+					ProviderCustomerID: customerID,
+					UniversalID:        universalID,
+					Email:              userEmail,
 				}
 
 				h.logger.Info("Creating customer mapping from one-time payment",
@@ -180,7 +181,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 					zap.String("email", userEmail))
 
 				// Check if mapping already exists
-				existing, _ := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), customerID)
+				existing, _ := h.customerMappingRepo.GetByProviderCustomerID(c.Request().Context(), stripeProvider, customerID)
 				if existing == nil {
 					if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
 						h.logger.Error("Failed to save customer mapping",
@@ -320,12 +321,13 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 					zap.String("subscription_id", subscriptionID))
 
 				// Check if mapping already exists
-				existing, _ := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), customerID)
+				existing, _ := h.customerMappingRepo.GetByProviderCustomerID(c.Request().Context(), stripeProvider, customerID)
 				if existing == nil {
 					customerMapping := &entity.CustomerMapping{
-						StripeCustomerID: customerID,
-						UniversalID:      universalID,
-						Email:            customerEmail, // Use the extracted email
+						Provider:           stripeProvider,
+						ProviderCustomerID: customerID,
+						UniversalID:        universalID,
+						Email:              customerEmail, // Use the extracted email
 					}
 
 					if err := h.customerMappingRepo.Create(c.Request().Context(), customerMapping); err != nil {
@@ -668,7 +670,7 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 			h.logger.Info("Attempting to find user ID from customer mapping",
 				zap.String("customer_id", customerID))
 
-			mapping, err := h.customerMappingRepo.GetByStripeCustomerID(c.Request().Context(), customerID)
+			mapping, err := h.customerMappingRepo.GetByProviderCustomerID(c.Request().Context(), stripeProvider, customerID)
 			if err != nil {
 				h.logger.Error("Error fetching customer mapping",
 					zap.String("customer_id", customerID),

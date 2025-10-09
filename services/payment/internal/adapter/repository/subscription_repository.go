@@ -10,6 +10,7 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/model"
+	domainProvider "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/provider"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -308,7 +309,7 @@ func (r *subscriptionRepository) entityToModel(ctx context.Context, e *entity.Su
 	}
 
 	// Look up user ID from customer mapping
-	customerMapping, err := r.customerMappingRepo.GetByStripeCustomerID(ctx, e.CustomerID)
+	customerMapping, err := r.customerMappingRepo.GetByProviderCustomerID(ctx, string(domainProvider.ProviderTypeStripe), e.CustomerID)
 	if err != nil {
 		r.logger.Error("Failed to get customer mapping",
 			zap.String("provider_customer_id", e.CustomerID),
@@ -332,19 +333,19 @@ func (r *subscriptionRepository) entityToModel(ctx context.Context, e *entity.Su
 	}
 
 	m := &model.Subscription{
-		UniversalID:          universalID,
+		UniversalID:            universalID,
 		ProviderCustomerID:     e.CustomerID,
 		ProviderSubscriptionID: &e.ID,
-		PlanID:               e.PlanID,  // PlanID 매핑 추가
-		Status:               r.mapEntityStatus(e.Status),
-		CurrentPeriodStart:   e.CreatedAt,
-		CurrentPeriodEnd:     e.CurrentPeriodEnd,
-		ProductName:          e.ProductName,
-		Amount:               e.Amount,
-		Currency:             e.Currency,
-		Interval:             e.Interval,
-		IntervalCount:        e.IntervalCount,
-}
+		PlanID:                 e.PlanID, // PlanID 매핑 추가
+		Status:                 r.mapEntityStatus(e.Status),
+		CurrentPeriodStart:     e.CreatedAt,
+		CurrentPeriodEnd:       e.CurrentPeriodEnd,
+		ProductName:            e.ProductName,
+		Amount:                 e.Amount,
+		Currency:               e.Currency,
+		Interval:               e.Interval,
+		IntervalCount:          e.IntervalCount,
+	}
 
 	if e.CancelAtPeriodEnd {
 		now := time.Now()

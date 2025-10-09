@@ -55,6 +55,23 @@ func (h *TossWebhookHandler) Handle(c echo.Context) error {
 	// Get signature from header (if TossPayments provides one)
 	signature := c.Request().Header.Get("X-Toss-Signature")
 
+	var webhookPayload TossWebhookPayload
+	if err := json.Unmarshal(body, &webhookPayload); err != nil {
+		h.logger.Warn("Failed to parse Toss webhook payload for logging",
+			zap.Error(err))
+	} else {
+		h.logger.Info("Processing Toss webhook event",
+			zap.String("event_type", webhookPayload.EventType),
+			zap.String("order_id", webhookPayload.Data.OrderID),
+			zap.String("payment_key", webhookPayload.Data.PaymentKey),
+			zap.String("status", webhookPayload.Data.Status))
+		if webhookPayload.Data.Failure != nil {
+			h.logger.Warn("Toss webhook failure details",
+				zap.String("order_id", webhookPayload.Data.OrderID),
+				zap.Any("failure", webhookPayload.Data.Failure))
+		}
+	}
+
 	// Process webhook event with provider
 	event, err := h.tossProvider.HandleWebhook(ctx, body, signature)
 	if err != nil {
@@ -66,11 +83,12 @@ func (h *TossWebhookHandler) Handle(c echo.Context) error {
 		})
 	}
 
-	h.logger.Info("Processing Toss webhook event",
+	h.logger.Debug("Toss webhook event payload parsed",
 		zap.String("event_type", event.EventType),
 		zap.String("order_id", event.OrderID),
 		zap.String("payment_key", event.PaymentKey),
-		zap.String("status", event.Status))
+		zap.String("status", event.Status),
+		zap.Any("event_data", event.Data))
 
 	// Handle different event types
 	switch event.Status {
@@ -133,7 +151,7 @@ func (h *TossWebhookHandler) handlePaymentCompleted(ctx context.Context, event *
 
 	// Update payment status
 	updates := map[string]interface{}{
-		"status": string(entity.PaymentStatusCompleted),
+		"status":                     string(entity.PaymentStatusCompleted),
 		"provider_payment_intent_id": event.PaymentKey,
 		"provider_charge_id":         event.TransactionKey,
 		"paid_at":                    gorm.Expr("NOW()"),
@@ -164,7 +182,7 @@ func (h *TossWebhookHandler) handlePaymentCancelled(ctx context.Context, event *
 
 	// Update payment status
 	updates := map[string]interface{}{
-		"status": string(entity.PaymentStatusCanceled),
+		"status":                string(entity.PaymentStatusCanceled),
 		"provider_payment_data": event.Data,
 	}
 
@@ -202,7 +220,7 @@ func (h *TossWebhookHandler) handlePaymentRefunded(ctx context.Context, event *p
 
 	// Update payment status
 	updates := map[string]interface{}{
-		"status": string(entity.PaymentStatusRefunded),
+		"status":                string(entity.PaymentStatusRefunded),
 		"provider_payment_data": event.Data,
 	}
 
@@ -228,6 +246,7 @@ func (h *TossWebhookHandler) handlePaymentFailed(ctx context.Context, event *pro
 
 	// Extract failure reason
 	var failureMessage string
+	failureCode := event.Status
 	if msg, ok := event.Data["message"].(string); ok {
 		failureMessage = msg
 	}
@@ -237,12 +256,20 @@ func (h *TossWebhookHandler) handlePaymentFailed(ctx context.Context, event *pro
 	if failureMessage == "" && event.Status == "ABORTED" {
 		failureMessage = "Payment aborted"
 	}
+	if failureData, ok := event.Data["failure"].(map[string]interface{}); ok {
+		if code, ok := failureData["code"].(string); ok && code != "" {
+			failureCode = code
+		}
+		if msg, ok := failureData["message"].(string); ok && msg != "" {
+			failureMessage = msg
+		}
+	}
 
 	// Update payment status
 	updates := map[string]interface{}{
-		"status":          string(entity.PaymentStatusFailed),
-		"failure_code":    event.Status,
-		"failure_message": failureMessage,
+		"status":                string(entity.PaymentStatusFailed),
+		"failure_code":          failureCode,
+		"failure_message":       failureMessage,
 		"provider_payment_data": event.Data,
 	}
 
@@ -261,13 +288,17 @@ func (h *TossWebhookHandler) handlePaymentFailed(ctx context.Context, event *pro
 
 // TossWebhookPayload represents the structure of Toss webhook payload
 type TossWebhookPayload struct {
-	EventType      string                 `json:"eventType"`
-	CreatedAt      string                 `json:"createdAt"`
-	Data           map[string]interface{} `json:"data"`
-	Secret         string                 `json:"secret,omitempty"` // For virtual account
-	OrderID        string                 `json:"orderId"`
-	PaymentKey     string                 `json:"paymentKey,omitempty"`
-	TransactionKey string                 `json:"transactionKey,omitempty"`
-	Status         string                 `json:"status"`
-	Amount         json.Number            `json:"amount,omitempty"`
+	EventType string               `json:"eventType"`
+	CreatedAt string               `json:"createdAt"`
+	Data      TossWebhookEventData `json:"data"`
+}
+
+// TossWebhookEventData represents the nested Toss event payload
+type TossWebhookEventData struct {
+	OrderID       string      `json:"orderId"`
+	PaymentKey    string      `json:"paymentKey"`
+	Status        string      `json:"status"`
+	Failure       interface{} `json:"failure,omitempty"`
+	Cancels       interface{} `json:"cancels,omitempty"`
+	TransactionID string      `json:"transactionId,omitempty"`
 }
