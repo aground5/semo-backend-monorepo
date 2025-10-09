@@ -29,8 +29,8 @@ func NewProductUseCase(
 	}
 }
 
-// CreatePaymentRequest represents a request to create a payment
-type CreatePaymentRequest struct {
+// CreateProductRequest represents a request to create a payment
+type CreateProductRequest struct {
 	UniversalID string                 `json:"universal_id"`
 	Amount      int64                  `json:"amount"`
 	Currency    string                 `json:"currency"`
@@ -40,8 +40,8 @@ type CreatePaymentRequest struct {
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// CreatePaymentResponse represents the response from payment creation
-type CreatePaymentResponse struct {
+// CreateProductResponse represents the response from payment creation
+type CreateProductResponse struct {
 	OrderID      string                 `json:"order_id"`
 	PaymentKey   string                 `json:"payment_key,omitempty"`
 	ClientSecret string                 `json:"client_secret,omitempty"`
@@ -52,8 +52,8 @@ type CreatePaymentResponse struct {
 	ProviderData map[string]interface{} `json:"provider_data,omitempty"`
 }
 
-// CreatePaymentWithProvider creates a new one-time payment with a specific provider
-func (u *ProductUseCase) CreatePaymentWithProvider(ctx context.Context, req *CreatePaymentRequest, paymentProvider provider.PaymentProvider) (*CreatePaymentResponse, error) {
+// CreateProductWithProvider creates a new one-time payment with a specific provider
+func (u *ProductUseCase) CreateProductWithProvider(ctx context.Context, req *CreateProductRequest, paymentProvider provider.PaymentProvider) (*CreateProductResponse, error) {
 	u.logger.Info("Creating one-time payment",
 		zap.String("universal_id", req.UniversalID),
 		zap.Int64("amount", req.Amount),
@@ -110,7 +110,7 @@ func (u *ProductUseCase) CreatePaymentWithProvider(ctx context.Context, req *Cre
 		return nil, fmt.Errorf("failed to create payment record: %w", err)
 	}
 
-	return &CreatePaymentResponse{
+	return &CreateProductResponse{
 		OrderID:      orderID,
 		PaymentKey:   providerResp.PaymentKey,
 		ClientSecret: providerResp.ClientSecret,
@@ -123,7 +123,7 @@ func (u *ProductUseCase) CreatePaymentWithProvider(ctx context.Context, req *Cre
 }
 
 // ConfirmPaymentRequest represents a request to confirm a payment
-type ConfirmPaymentRequest struct {
+type ConfirmProductRequest struct {
 	OrderID    string                 `json:"order_id"`
 	PaymentKey string                 `json:"payment_key"`
 	Amount     int64                  `json:"amount"`
@@ -132,7 +132,7 @@ type ConfirmPaymentRequest struct {
 }
 
 // ConfirmPaymentResponse represents the response from payment confirmation
-type ConfirmPaymentResponse struct {
+type ConfirmProductResponse struct {
 	OrderID        string                 `json:"order_id"`
 	PaymentKey     string                 `json:"payment_key"`
 	TransactionKey string                 `json:"transaction_key,omitempty"`
@@ -145,7 +145,7 @@ type ConfirmPaymentResponse struct {
 }
 
 // ConfirmPaymentWithProvider confirms a payment with a specific provider
-func (u *ProductUseCase) ConfirmPaymentWithProvider(ctx context.Context, req *ConfirmPaymentRequest, paymentProvider provider.PaymentProvider) (*ConfirmPaymentResponse, error) {
+func (u *ProductUseCase) ConfirmPaymentWithProvider(ctx context.Context, req *ConfirmProductRequest, paymentProvider provider.PaymentProvider) (*ConfirmProductResponse, error) {
 	u.logger.Info("Confirming payment",
 		zap.String("order_id", req.OrderID),
 		zap.String("payment_key", req.PaymentKey),
@@ -210,7 +210,7 @@ func (u *ProductUseCase) ConfirmPaymentWithProvider(ctx context.Context, req *Co
 		return nil, fmt.Errorf("failed to update payment: %w", err)
 	}
 
-	return &ConfirmPaymentResponse{
+	return &ConfirmProductResponse{
 		OrderID:        providerResp.OrderID,
 		PaymentKey:     providerResp.PaymentKey,
 		TransactionKey: providerResp.TransactionKey,

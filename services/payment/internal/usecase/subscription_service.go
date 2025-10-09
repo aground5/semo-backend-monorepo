@@ -8,6 +8,7 @@ import (
 	"github.com/stripe/stripe-go/v79/product"
 	"github.com/stripe/stripe-go/v79/subscription"
 	domainErrors "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/errors"
+	domainProvider "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/provider"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
 	"go.uber.org/zap"
 )
@@ -35,7 +36,7 @@ func NewSubscriptionService(
 // GetActiveSubscriptionForUser finds the active subscription for a given user ID
 func (s *SubscriptionService) GetActiveSubscriptionForUniversalID(ctx context.Context, universalID string) (*stripe.Subscription, error) {
 	// Look up customer mapping
-	customerMapping, err := s.customerMappingRepo.GetByUniversalID(ctx, universalID)
+	customerMapping, err := s.customerMappingRepo.GetByProviderAndUniversalID(ctx, string(domainProvider.ProviderTypeStripe), universalID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get customer mapping: %w", err)
 	}
@@ -45,7 +46,7 @@ func (s *SubscriptionService) GetActiveSubscriptionForUniversalID(ctx context.Co
 	}
 
 	// Find active subscription
-	return s.GetActiveSubscriptionForCustomer(ctx, customerMapping.StripeCustomerID)
+	return s.GetActiveSubscriptionForCustomer(ctx, customerMapping.ProviderCustomerID)
 }
 
 // GetActiveSubscriptionForCustomer finds the active subscription for a given customer ID
@@ -110,7 +111,7 @@ func (s *SubscriptionService) CancelSubscriptionForUniversalID(ctx context.Conte
 	}
 	// Expand the response to include price details (but not beyond 4 levels)
 	params.AddExpand("items.data.price")
-	
+
 	updatedSub, err := subscription.Update(activeSub.ID, params)
 
 	if err != nil {

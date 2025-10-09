@@ -1,10 +1,13 @@
 package http
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/provider"
+	domainRepo "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
 	providerFactory "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/provider"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/middleware/auth"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/usecase"
@@ -13,26 +16,117 @@ import (
 
 // ProductHandler handles one-time payment endpoints
 type ProductHandler struct {
-	productUseCase  *usecase.ProductUseCase
-	providerFactory *providerFactory.Factory
-	logger          *zap.Logger
+	productUseCase      *usecase.ProductUseCase
+	providerFactory     *providerFactory.Factory
+	customerMappingRepo domainRepo.CustomerMappingRepository
+	logger              *zap.Logger
 }
 
 // NewProductHandler creates a new ProductHandler instance
 func NewProductHandler(
 	productUseCase *usecase.ProductUseCase,
 	providerFactory *providerFactory.Factory,
+	customerMappingRepo domainRepo.CustomerMappingRepository,
 	logger *zap.Logger,
 ) *ProductHandler {
 	return &ProductHandler{
-		productUseCase:  productUseCase,
-		providerFactory: providerFactory,
-		logger:          logger,
+		productUseCase:      productUseCase,
+		providerFactory:     providerFactory,
+		customerMappingRepo: customerMappingRepo,
+		logger:              logger,
 	}
 }
 
-// CreatePaymentRequest represents the HTTP request for creating a payment
-type CreatePaymentRequest struct {
+// ensureProviderCustomerMapping creates or updates the mapping between a universal user ID and a provider customer ID.
+func (h *ProductHandler) ensureProviderCustomerMapping(ctx context.Context, providerName string, universalID string, providerCustomerID string, email string) {
+	if h.customerMappingRepo == nil {
+		return
+	}
+
+	if providerCustomerID == "" {
+		h.logger.Warn("Skipping customer mapping creation: missing provider customer ID",
+			zap.String("provider", providerName),
+			zap.String("universal_id", universalID))
+		return
+	}
+
+	existingByUser, err := h.customerMappingRepo.GetByProviderAndUniversalID(ctx, providerName, universalID)
+	if err != nil {
+		h.logger.Warn("Failed to check existing customer mapping by user",
+			zap.String("provider", providerName),
+			zap.String("universal_id", universalID),
+			zap.Error(err))
+		return
+	}
+
+	if existingByUser != nil {
+		needsUpdate := existingByUser.ProviderCustomerID != providerCustomerID
+		if email != "" && existingByUser.Email == "" {
+			existingByUser.Email = email
+			needsUpdate = true
+		}
+		if needsUpdate {
+			existingByUser.ProviderCustomerID = providerCustomerID
+			if err := h.customerMappingRepo.Update(ctx, existingByUser); err != nil {
+				h.logger.Warn("Failed to update customer mapping for provider",
+					zap.String("provider", providerName),
+					zap.String("universal_id", universalID),
+					zap.String("provider_customer_id", providerCustomerID),
+					zap.Error(err))
+			} else {
+				h.logger.Info("Updated customer mapping for provider",
+					zap.String("provider", providerName),
+					zap.String("universal_id", universalID),
+					zap.String("provider_customer_id", providerCustomerID))
+			}
+		}
+		return
+	}
+
+	existingByCustomer, err := h.customerMappingRepo.GetByProviderCustomerID(ctx, providerName, providerCustomerID)
+	if err != nil {
+		h.logger.Warn("Failed to check existing customer mapping by provider ID",
+			zap.String("provider", providerName),
+			zap.String("provider_customer_id", providerCustomerID),
+			zap.Error(err))
+		return
+	}
+
+	if existingByCustomer != nil {
+		if existingByCustomer.UniversalID != universalID {
+			h.logger.Warn("Provider customer ID already mapped to different user",
+				zap.String("provider", providerName),
+				zap.String("provider_customer_id", providerCustomerID),
+				zap.String("existing_universal_id", existingByCustomer.UniversalID),
+				zap.String("requested_universal_id", universalID))
+		}
+		return
+	}
+
+	mapping := &entity.CustomerMapping{
+		Provider:           providerName,
+		ProviderCustomerID: providerCustomerID,
+		UniversalID:        universalID,
+		Email:              email,
+	}
+
+	if err := h.customerMappingRepo.Create(ctx, mapping); err != nil {
+		h.logger.Warn("Failed to create customer mapping for provider",
+			zap.String("provider", providerName),
+			zap.String("provider_customer_id", providerCustomerID),
+			zap.String("universal_id", universalID),
+			zap.Error(err))
+		return
+	}
+
+	h.logger.Info("Customer mapping created for provider",
+		zap.String("provider", providerName),
+		zap.String("provider_customer_id", providerCustomerID),
+		zap.String("universal_id", universalID))
+}
+
+// CreateProductRequest represents the HTTP request for creating a payment
+type CreateProductRequest struct {
 	Amount      int64                  `json:"amount" validate:"required,min=100"`
 	Currency    string                 `json:"currency" validate:"required"`
 	OrderName   string                 `json:"order_name" validate:"required"`
@@ -41,8 +135,8 @@ type CreatePaymentRequest struct {
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// CreatePayment handles POST /products endpoint
-func (h *ProductHandler) CreatePayment(c echo.Context) error {
+// CreateProduct handles POST /products endpoint
+func (h *ProductHandler) CreateProduct(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	// Get provider from query parameter (default: toss)
@@ -72,7 +166,7 @@ func (h *ProductHandler) CreatePayment(c echo.Context) error {
 	}
 
 	// Parse request body
-	var req CreatePaymentRequest
+	var req CreateProductRequest
 	if err := c.Bind(&req); err != nil {
 		h.logger.Error("Failed to bind request",
 			zap.Error(err))
@@ -87,8 +181,8 @@ func (h *ProductHandler) CreatePayment(c echo.Context) error {
 		h.logger.Error("Failed to validate request",
 			zap.Error(err))
 		return c.JSON(http.StatusBadRequest, echo.Map{
-			"error": "Validation failed",
-			"code":  "VALIDATION_FAILED",
+			"error":   "Validation failed",
+			"code":    "VALIDATION_FAILED",
 			"details": err.Error(),
 		})
 	}
@@ -104,8 +198,19 @@ func (h *ProductHandler) CreatePayment(c echo.Context) error {
 		})
 	}
 
+	var metadataEmail string
+	if req.Metadata != nil {
+		if emailValue, ok := req.Metadata["email"].(string); ok {
+			metadataEmail = emailValue
+		}
+	}
+
+	if providerStr == string(provider.ProviderTypeToss) {
+		h.ensureProviderCustomerMapping(ctx, providerStr, universalID, req.CustomerKey, metadataEmail)
+	}
+
 	// Create payment request
-	usecaseReq := &usecase.CreatePaymentRequest{
+	usecaseReq := &usecase.CreateProductRequest{
 		UniversalID: universalID,
 		Amount:      req.Amount,
 		Currency:    req.Currency,
@@ -116,7 +221,7 @@ func (h *ProductHandler) CreatePayment(c echo.Context) error {
 	}
 
 	// Create payment with provider
-	resp, err := h.productUseCase.CreatePaymentWithProvider(ctx, usecaseReq, paymentProvider)
+	resp, err := h.productUseCase.CreateProductWithProvider(ctx, usecaseReq, paymentProvider)
 	if err != nil {
 		h.logger.Error("Failed to create payment",
 			zap.String("universal_id", universalID),
@@ -135,8 +240,8 @@ func (h *ProductHandler) CreatePayment(c echo.Context) error {
 	return c.JSON(http.StatusCreated, resp)
 }
 
-// ConfirmPaymentRequest represents the HTTP request for confirming a payment
-type ConfirmPaymentRequest struct {
+// ConfirmProductRequest represents the HTTP request for confirming a payment
+type ConfirmProductRequest struct {
 	PaymentKey string                 `json:"paymentKey" validate:"required"`
 	OrderID    string                 `json:"orderId" validate:"required"`
 	Amount     int64                  `json:"amount" validate:"required"`
@@ -144,7 +249,7 @@ type ConfirmPaymentRequest struct {
 }
 
 // ConfirmPayment handles POST /products/confirm endpoint
-func (h *ProductHandler) ConfirmPayment(c echo.Context) error {
+func (h *ProductHandler) ConfirmProduct(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	// Get provider from query parameter (default: toss)
@@ -174,7 +279,7 @@ func (h *ProductHandler) ConfirmPayment(c echo.Context) error {
 	}
 
 	// Parse request body
-	var req ConfirmPaymentRequest
+	var req ConfirmProductRequest
 	if err := c.Bind(&req); err != nil {
 		h.logger.Error("Failed to bind request",
 			zap.Error(err))
@@ -189,8 +294,8 @@ func (h *ProductHandler) ConfirmPayment(c echo.Context) error {
 		h.logger.Error("Failed to validate request",
 			zap.Error(err))
 		return c.JSON(http.StatusBadRequest, echo.Map{
-			"error": "Validation failed",
-			"code":  "VALIDATION_FAILED",
+			"error":   "Validation failed",
+			"code":    "VALIDATION_FAILED",
 			"details": err.Error(),
 		})
 	}
@@ -199,7 +304,7 @@ func (h *ProductHandler) ConfirmPayment(c echo.Context) error {
 	universalID, _ := auth.GetUniversalID(c)
 
 	// Create confirmation request
-	usecaseReq := &usecase.ConfirmPaymentRequest{
+	usecaseReq := &usecase.ConfirmProductRequest{
 		OrderID:    req.OrderID,
 		PaymentKey: req.PaymentKey,
 		Amount:     req.Amount,
@@ -237,4 +342,3 @@ func (h *ProductHandler) ConfirmPayment(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, resp)
 }
-

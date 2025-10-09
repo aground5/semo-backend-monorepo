@@ -105,7 +105,7 @@ func (s *Server) setupRoutes() {
 	paymentUsecase := usecase.NewPaymentUsecase(s.repos.Payment, nil, s.logger)
 	paymentHandler := handlers.NewPaymentHandler(paymentUsecase, s.logger)
 	creditHandler := handlers.NewCreditHandler(s.logger, creditService, creditTransactionService)
-	productHandler := handlers.NewProductHandler(productUseCase, factory, s.logger)
+	productHandler := handlers.NewProductHandler(productUseCase, factory, s.repos.CustomerMapping, s.logger)
 	tossWebhookHandler := handlers.NewTossWebhookHandler(s.logger, s.repos.Payment, s.config.Service.Toss.SecretKey, s.config.Service.Toss.ClientKey)
 
 	// JWT middleware configuration
@@ -142,8 +142,8 @@ func (s *Server) setupRoutes() {
 
 	// One-time payment - RESTful style (all require authentication)
 	products := protected.Group("/products")
-	products.POST("", productHandler.CreatePayment)          // Provider-based payment creation
-	products.POST("/confirm", productHandler.ConfirmPayment) // Provider payment confirmation
+	products.POST("", productHandler.CreateProduct)          // Provider-based payment creation
+	products.POST("/confirm", productHandler.ConfirmProduct) // Provider payment confirmation
 
 	// Checkout session status endpoint (requires authentication)
 	protected.GET("/checkout/session/:sessionId", checkoutHandler.CheckSessionStatus)
