@@ -2,6 +2,8 @@ package http
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/repository"
@@ -35,8 +37,7 @@ func (h *PlansHandler) GetSubscriptionPlans(c echo.Context) error {
 		})
 	}
 
-	// Query subscription-type payment plans from database
-	dbPlans, err := h.planRepo.GetByTypeAndProvider(ctx, "subscription", provider)
+	dbPlans, err := h.planRepo.GetByTypeAndProvider(ctx, model.PlanTypeSubscription, provider)
 	if err != nil {
 		h.logger.Error("Error fetching subscription-type payment plans from database", zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -44,41 +45,9 @@ func (h *PlansHandler) GetSubscriptionPlans(c echo.Context) error {
 		})
 	}
 
-	// Convert to entity format
-	var plans []entity.Plan
+	plans := make([]entity.Plan, 0, len(dbPlans))
 	for _, dbPlan := range dbPlans {
-		plan := entity.Plan{
-			ID:            dbPlan.ProviderPriceID,
-			Name:          dbPlan.DisplayName,
-			Description:   "",                            // Could be added to features
-			Amount:        int64(dbPlan.CreditsPerCycle), // This should be price amount, not credits
-			Currency:      "KRW",                         // Default currency
-			Interval:      "month",                       // Default interval
-			IntervalCount: 1,
-		}
-
-		plan.Provider = dbPlan.PgProvider
-
-		// Extract description from features if available
-		if desc, ok := dbPlan.Features["description"].(string); ok {
-			plan.Description = desc
-		}
-
-		// Extract price info from features if available
-		if amount, ok := dbPlan.Features["amount"].(float64); ok {
-			plan.Amount = int64(amount)
-		}
-		if currency, ok := dbPlan.Features["currency"].(string); ok {
-			plan.Currency = currency
-		}
-		if interval, ok := dbPlan.Features["interval"].(string); ok {
-			plan.Interval = interval
-		}
-		if intervalCount, ok := dbPlan.Features["interval_count"].(float64); ok {
-			plan.IntervalCount = int64(intervalCount)
-		}
-
-		plans = append(plans, plan)
+		plans = append(plans, mapPaymentPlanToEntity(dbPlan))
 	}
 
 	h.logger.Info("Plans fetched successfully from database",
@@ -110,8 +79,7 @@ func (h *PlansHandler) GetOneTimePlans(c echo.Context) error {
 		})
 	}
 
-	// Query one-time payment plans from database
-	dbPlans, err := h.planRepo.GetByTypeAndProvider(ctx, "one_time", provider)
+	dbPlans, err := h.planRepo.GetByTypeAndProvider(ctx, model.PlanTypeOneTime, provider)
 	if err != nil {
 		h.logger.Error("Error fetching one-time payment plans from database", zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -119,34 +87,9 @@ func (h *PlansHandler) GetOneTimePlans(c echo.Context) error {
 		})
 	}
 
-	// Convert to entity format
-	var plans []entity.Plan
+	plans := make([]entity.Plan, 0, len(dbPlans))
 	for _, dbPlan := range dbPlans {
-		plan := entity.Plan{
-			ID:          dbPlan.ProviderPriceID,
-			Name:        dbPlan.DisplayName,
-			Description: "",                            // Could be added to features
-			Amount:      int64(dbPlan.CreditsPerCycle), // This should be price amount, not credits
-			Currency:    "KRW",                         // Default currency
-			Type:        "one_time",                    // One-time payment
-		}
-
-		plan.Provider = dbPlan.PgProvider
-
-		// Extract description from features if available
-		if desc, ok := dbPlan.Features["description"].(string); ok {
-			plan.Description = desc
-		}
-
-		// Extract price info from features if available
-		if amount, ok := dbPlan.Features["amount"].(float64); ok {
-			plan.Amount = int64(amount)
-		}
-		if currency, ok := dbPlan.Features["currency"].(string); ok {
-			plan.Currency = currency
-		}
-
-		plans = append(plans, plan)
+		plans = append(plans, mapPaymentPlanToEntity(dbPlan))
 	}
 
 	h.logger.Info("One-time payment plans fetched successfully from database",
@@ -173,7 +116,6 @@ func (h *PlansHandler) GetPlans(c echo.Context) error {
 
 	provider := c.QueryParam("provider")
 
-	// Query all plans from database
 	dbPlans, err := h.planRepo.GetAll(ctx)
 	if provider != "" {
 		filtered := make([]*model.PaymentPlan, 0, len(dbPlans))
@@ -191,48 +133,9 @@ func (h *PlansHandler) GetPlans(c echo.Context) error {
 		})
 	}
 
-	// Convert to entity format
-	var plans []entity.Plan
+	plans := make([]entity.Plan, 0, len(dbPlans))
 	for _, dbPlan := range dbPlans {
-		plan := entity.Plan{
-			ID:          dbPlan.ProviderPriceID,
-			Name:        dbPlan.DisplayName,
-			Description: "",                            // Could be added to features
-			Amount:      int64(dbPlan.CreditsPerCycle), // This should be price amount, not credits
-			Currency:    "KRW",                         // Default currency
-			Type:        dbPlan.Type,                   // Include the type
-		}
-
-		plan.Provider = dbPlan.PgProvider
-
-		// Set interval for subscriptions
-		if dbPlan.Type == "subscription" {
-			plan.Interval = "month" // Default interval
-			plan.IntervalCount = 1
-		}
-
-		// Extract description from features if available
-		if desc, ok := dbPlan.Features["description"].(string); ok {
-			plan.Description = desc
-		}
-
-		// Extract price info from features if available
-		if amount, ok := dbPlan.Features["amount"].(float64); ok {
-			plan.Amount = int64(amount)
-		}
-		if currency, ok := dbPlan.Features["currency"].(string); ok {
-			plan.Currency = currency
-		}
-		if dbPlan.Type == "subscription" {
-			if interval, ok := dbPlan.Features["interval"].(string); ok {
-				plan.Interval = interval
-			}
-			if intervalCount, ok := dbPlan.Features["interval_count"].(float64); ok {
-				plan.IntervalCount = int64(intervalCount)
-			}
-		}
-
-		plans = append(plans, plan)
+		plans = append(plans, mapPaymentPlanToEntity(dbPlan))
 	}
 
 	h.logger.Info("Plans fetched successfully from database",
@@ -249,4 +152,268 @@ func (h *PlansHandler) GetPlans(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{
 		"plans": plans,
 	})
+}
+
+func mapPaymentPlanToEntity(dbPlan *model.PaymentPlan) entity.Plan {
+	plan := entity.Plan{
+		ID:       dbPlan.ProviderPriceID,
+		Name:     dbPlan.DisplayName,
+		Type:     dbPlan.Type,
+		Provider: dbPlan.PgProvider,
+	}
+
+	if plan.Type == "" {
+		plan.Type = model.PlanTypeSubscription
+	}
+
+	features := dbPlan.Features
+	if features == nil {
+		return plan
+	}
+	featureMap := map[string]interface{}(features)
+
+	if desc, ok := getString(featureMap, "description"); ok {
+		plan.Description = desc
+	}
+
+	if priceMap, ok := getMap(featureMap, "price"); ok {
+		var price entity.PlanPrice
+		if amount, ok := getInt64(priceMap, "amount"); ok {
+			plan.Amount = amount
+			price.Amount = amount
+		}
+		if currency, ok := getString(priceMap, "currency"); ok {
+			plan.Currency = currency
+			price.Currency = currency
+		}
+		if interval, ok := getString(priceMap, "interval"); ok {
+			plan.Interval = interval
+		}
+		if intervalCount, ok := getInt64(priceMap, "interval_count"); ok {
+			plan.IntervalCount = intervalCount
+		}
+		if price.Amount != 0 || price.Currency != "" {
+			plan.Price = &price
+		}
+	}
+
+	if summaryMap, ok := getMap(featureMap, "summary"); ok {
+		if summary := buildPlanSummary(summaryMap); summary != nil {
+			plan.Summary = summary
+		}
+	}
+
+	if badgeList, ok := getSlice(featureMap, "badges"); ok {
+		plan.Badges = buildPlanBadges(badgeList)
+	}
+
+	if benefits, ok := getSlice(featureMap, "benefits"); ok {
+		plan.Benefits = buildStringSlice(benefits)
+	}
+
+	if ctaMap, ok := getMap(featureMap, "cta"); ok {
+		if cta := buildPlanCTA(ctaMap); cta != nil {
+			plan.CTA = cta
+		}
+	}
+
+	if plan.Type == model.PlanTypeSubscription {
+		if plan.Interval == "" {
+			plan.Interval = "month"
+		}
+		if plan.IntervalCount == 0 {
+			plan.IntervalCount = 1
+		}
+	}
+
+	return plan
+}
+
+func getString(m map[string]interface{}, key string) (string, bool) {
+	if m == nil {
+		return "", false
+	}
+	value, exists := m[key]
+	if !exists {
+		return "", false
+	}
+	return toString(value)
+}
+
+func getInt64(m map[string]interface{}, key string) (int64, bool) {
+	if m == nil {
+		return 0, false
+	}
+	value, exists := m[key]
+	if !exists {
+		return 0, false
+	}
+	return toInt64(value)
+}
+
+func getMap(m map[string]interface{}, key string) (map[string]interface{}, bool) {
+	if m == nil {
+		return nil, false
+	}
+	value, exists := m[key]
+	if !exists {
+		return nil, false
+	}
+	return toMap(value)
+}
+
+func getSlice(m map[string]interface{}, key string) ([]interface{}, bool) {
+	if m == nil {
+		return nil, false
+	}
+	value, exists := m[key]
+	if !exists {
+		return nil, false
+	}
+	return toSlice(value)
+}
+
+func toString(value interface{}) (string, bool) {
+	switch v := value.(type) {
+	case string:
+		return v, true
+	case int:
+		return strconv.Itoa(v), true
+	case int32:
+		return strconv.FormatInt(int64(v), 10), true
+	case int64:
+		return strconv.FormatInt(v, 10), true
+	case float32:
+		return strconv.FormatInt(int64(v), 10), true
+	case float64:
+		return strconv.FormatInt(int64(v), 10), true
+	default:
+		return "", false
+	}
+}
+
+func toInt64(value interface{}) (int64, bool) {
+	switch v := value.(type) {
+	case int:
+		return int64(v), true
+	case int32:
+		return int64(v), true
+	case int64:
+		return v, true
+	case float32:
+		return int64(v), true
+	case float64:
+		return int64(v), true
+	case string:
+		cleaned := strings.ReplaceAll(strings.TrimSpace(v), ",", "")
+		if cleaned == "" {
+			return 0, false
+		}
+		parsed, err := strconv.ParseInt(cleaned, 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	default:
+		return 0, false
+	}
+}
+
+func toMap(value interface{}) (map[string]interface{}, bool) {
+	if value == nil {
+		return nil, false
+	}
+	switch v := value.(type) {
+	case map[string]interface{}:
+		return v, true
+	default:
+		return nil, false
+	}
+}
+
+func toSlice(value interface{}) ([]interface{}, bool) {
+	if value == nil {
+		return nil, false
+	}
+	switch v := value.(type) {
+	case []interface{}:
+		return v, true
+	default:
+		return nil, false
+	}
+}
+
+func buildPlanSummary(summaryMap map[string]interface{}) *entity.PlanSummary {
+	summary := &entity.PlanSummary{}
+
+	if title, ok := getString(summaryMap, "title"); ok {
+		summary.Title = title
+	}
+	if subtitle, ok := getString(summaryMap, "subtitle"); ok {
+		summary.Subtitle = subtitle
+	}
+	if tagline, ok := getString(summaryMap, "tagline"); ok {
+		summary.Tagline = tagline
+	}
+	if audience, ok := getString(summaryMap, "audience"); ok {
+		summary.Audience = audience
+	}
+	if details, ok := getString(summaryMap, "details"); ok {
+		summary.Details = details
+	}
+
+	if summary.Title == "" && summary.Subtitle == "" && summary.Tagline == "" && summary.Audience == "" && summary.Details == "" {
+		return nil
+	}
+
+	return summary
+}
+
+func buildPlanBadges(rawItems []interface{}) []entity.PlanBadge {
+	badges := make([]entity.PlanBadge, 0, len(rawItems))
+	for _, item := range rawItems {
+		badgeMap, ok := toMap(item)
+		if !ok {
+			continue
+		}
+
+		badge := entity.PlanBadge{}
+		if kind, ok := getString(badgeMap, "kind"); ok {
+			badge.Kind = kind
+		}
+		if label, ok := getString(badgeMap, "label"); ok {
+			badge.Label = label
+		}
+
+		if badge.Kind == "" && badge.Label == "" {
+			continue
+		}
+
+		badges = append(badges, badge)
+	}
+	return badges
+}
+
+func buildStringSlice(items []interface{}) []string {
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		if str, ok := toString(item); ok {
+			if strings.TrimSpace(str) == "" {
+				continue
+			}
+			result = append(result, str)
+		}
+	}
+	return result
+}
+
+func buildPlanCTA(ctaMap map[string]interface{}) *entity.PlanCTA {
+	cta := &entity.PlanCTA{}
+	if label, ok := getString(ctaMap, "label"); ok {
+		cta.Label = label
+	}
+	if cta.Label == "" {
+		return nil
+	}
+	return cta
 }

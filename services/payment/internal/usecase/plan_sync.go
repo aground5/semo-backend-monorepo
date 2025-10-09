@@ -175,15 +175,23 @@ func (s *PlanSyncService) SyncPriceWithProduct(ctx context.Context, p *stripe.Pr
 		json.Unmarshal([]byte(featuresJSON), &features)
 	}
 
-	// Add price information to features
-	features["amount"] = p.UnitAmount
-	features["currency"] = string(p.Currency)
+	// Normalise price information structure
+	delete(features, "amount")
+	delete(features, "currency")
+	delete(features, "interval")
+	delete(features, "interval_count")
 
-	// Add interval information only for subscriptions
-	if planType == model.PlanTypeSubscription && p.Recurring != nil {
-		features["interval"] = string(p.Recurring.Interval)
-		features["interval_count"] = p.Recurring.IntervalCount
+	priceFeature := map[string]interface{}{
+		"amount":   p.UnitAmount,
+		"currency": string(p.Currency),
 	}
+
+	if planType == model.PlanTypeSubscription && p.Recurring != nil {
+		priceFeature["interval"] = string(p.Recurring.Interval)
+		priceFeature["interval_count"] = p.Recurring.IntervalCount
+	}
+
+	features["price"] = priceFeature
 
 	// Add product description if available
 	if prod.Description != "" {
@@ -199,13 +207,13 @@ func (s *PlanSyncService) SyncPriceWithProduct(ctx context.Context, p *stripe.Pr
 	plan := &model.PaymentPlan{
 		ProviderPriceID:   p.ID,
 		ProviderProductID: prod.ID,
-		PgProvider:       "stripe",
-		DisplayName:     prod.Name,
-		Type:            planType,
-		CreditsPerCycle: creditsPerCycle,
-		Features:        features,
-		SortOrder:       sortOrder,
-		IsActive:        p.Active && prod.Active,
+		PgProvider:        "stripe",
+		DisplayName:       prod.Name,
+		Type:              planType,
+		CreditsPerCycle:   creditsPerCycle,
+		Features:          features,
+		SortOrder:         sortOrder,
+		IsActive:          p.Active && prod.Active,
 	}
 
 	return s.planRepo.Upsert(ctx, plan)

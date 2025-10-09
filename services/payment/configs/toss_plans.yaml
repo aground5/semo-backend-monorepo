@@ -1,27 +1,60 @@
 plans:
-  - provider_price_id: toss_price_basic
-    provider_product_id: toss_prod_basic
+  - provider_price_id: toss_price_onetime_pro
+    provider_product_id: toss_prod_onetime_pro
     pg_provider: toss
-    display_name: SEMO Toss Basic
-    type: subscription
-    credits_per_cycle: 1000
+    display_name: SEMO Toss Pro Package
+    type: one_time
+    credits_per_cycle: 10
     features:
-      amount: 2000
-      currency: krw
-      interval: month
-      interval_count: 1
-      description: test product for semo subscribe
+      description: 분석 10회 패키지 이용권
+      price:
+        amount: 9900
+        currency: KRW
+      summary:
+        title: 프로 패키지
+        subtitle: (10회 이용권)
+        tagline: 꾸준히 진단하고 개선 실행까지 이어가고 싶은 팀을 위한 이용권
+      badges:
+        - kind: recommendation
+          label: 추천
+        - kind: savings
+          label: 1회권 대비 약 48% 절약
+      cta:
+        label: 프로 패키지 시작하기
+      benefits:
+        - 분석 10회 이용
+        - AI 분석 인사이트 요약
+        - 핵심 KPI 리포트 요약
+        - 카테고리·디바이스별 UX 진단표
+        - 경쟁사·마켓 벤치마크 대시보드
+        - 개선 우선순위 액션 가이드
+        - 디자인 개선 제안 패키지
     sort_order: 0
     is_active: true
-  - provider_price_id: toss_price_onetime
-    provider_product_id: toss_prod_onetime
+  - provider_price_id: toss_price_onetime_light
+    provider_product_id: toss_prod_onetime_light
     pg_provider: toss
-    display_name: SEMO Toss One-Time
+    display_name: SEMO Toss Light Package
     type: one_time
-    credits_per_cycle: 500
+    credits_per_cycle: 1
     features:
-      amount: 5000
-      currency: usd
-      description: one-time credit pack for SEMO
+      description: 분석 1회 이용권
+      price:
+        amount: 1900
+        currency: KRW
+      summary:
+        title: 라이트 패키지
+        subtitle: (1회 이용권)
+        tagline: 필요한 순간에 정확한 진단을 하고 싶은 팀을 위한 이용권
+      cta:
+        label: 라이트 패키지 시작하기
+      benefits:
+        - 분석 1회 이용
+        - AI 분석 인사이트 요약
+        - 핵심 KPI 리포트 요약
+        - 카테고리·디바이스별 UX 진단표
+        - 경쟁사 벤치마크 비교
+        - 개선 우선순위 액션 가이드
+        - 디자인 개선 제안 패키지
     sort_order: 10
     is_active: true
