@@ -20,15 +20,42 @@ type Subscription struct {
 }
 
 type Plan struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	Amount        int64  `json:"amount"`
-	Currency      string `json:"currency"`
-	Type          string `json:"type"` // 'subscription' or 'one_time'
-	Provider      string `json:"provider,omitempty"`
-	Interval      string `json:"interval,omitempty"`
-	IntervalCount int64  `json:"interval_count,omitempty"`
+	ID            string       `json:"id"`
+	Name          string       `json:"name"`
+	Description   string       `json:"description"`
+	Amount        int64        `json:"amount"`
+	Currency      string       `json:"currency"`
+	Type          string       `json:"type"` // 'subscription' or 'one_time'
+	Provider      string       `json:"provider,omitempty"`
+	Interval      string       `json:"interval,omitempty"`
+	IntervalCount int64        `json:"interval_count,omitempty"`
+	Summary       *PlanSummary `json:"summary,omitempty"`
+	Badges        []PlanBadge  `json:"badges,omitempty"`
+	CTA           *PlanCTA     `json:"cta,omitempty"`
+	Benefits      []string     `json:"benefits,omitempty"`
+	Price         *PlanPrice   `json:"price,omitempty"`
+}
+
+type PlanSummary struct {
+	Title    string `json:"title"`
+	Subtitle string `json:"subtitle,omitempty"`
+	Tagline  string `json:"tagline,omitempty"`
+	Audience string `json:"audience,omitempty"`
+	Details  string `json:"details,omitempty"`
+}
+
+type PlanBadge struct {
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+}
+
+type PlanCTA struct {
+	Label string `json:"label"`
+}
+
+type PlanPrice struct {
+	Amount   int64  `json:"amount"`
+	Currency string `json:"currency"`
 }
 
 type WebhookData struct {
