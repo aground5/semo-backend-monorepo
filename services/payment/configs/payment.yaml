@@ -1,0 +1,42 @@
+service:
+  name: payment
+  environment: development
+  version: v1.0.0
+  client_urls:
+    - http://localhost:3000
+    - http://localhost:5173
+  stripe_secret_key: REMOVED_STRIPE_TEST_SECRET_KEY
+  stripe_webhook_secret: REMOVED_STRIPE_WEBHOOK_SECRET
+  enable_test_endpoints: true
+  toss:
+    secret_key: REMOVED_TOSS_TEST_SECRET_KEY
+    client_key: REMOVED_TOSS_TEST_CLIENT_KEY
+    webhook_secret: toss_webhook_secret_test
+    plans_file: ./configs/toss_plans.yaml
+  supabase:
+    jwt_secret: REMOVED_SUPABASE_JWT_SECRET
+    project_url: https://fjctbfwohrqdmrdyqbig.supabase.co
+    # Using service_role key for server-side workspace verification
+    api_key: REMOVED_SUPABASE_SERVICE_KEY
+
+server:
+  http:
+    host: 0.0.0.0
+    port: 8084
+  grpc:
+    host: 0.0.0.0
+    port: 9084
+
+log:
+  level: info
+  format: json
+
+jwt:
+  secret:
+
+database:
+  host: localhost
+  port: 5433
+  user: myuser
+  password: postgresql
+  name: mydatabase

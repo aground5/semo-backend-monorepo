@@ -1,0 +1,70 @@
+package entity
+
+import "time"
+
+type Subscription struct {
+	ID                string    `json:"id"`
+	CustomerID        string    `json:"customer_id"`
+	CustomerEmail     string    `json:"customer_email"`
+	Status            string    `json:"status"`
+	CurrentPeriodEnd  time.Time `json:"current_period_end"`
+	CancelAtPeriodEnd bool      `json:"cancel_at_period_end"`
+	ProductName       string    `json:"product_name"`
+	Amount            int64     `json:"amount"`
+	Currency          string    `json:"currency"`
+	Interval          string    `json:"interval"`
+	IntervalCount     int64     `json:"interval_count"`
+	PlanID            *string   `json:"plan_id,omitempty"` // 추가
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+type Plan struct {
+	ID            string       `json:"id"`
+	Name          string       `json:"name"`
+	Description   string       `json:"description"`
+	Amount        int64        `json:"amount"`
+	Currency      string       `json:"currency"`
+	Type          string       `json:"type"` // 'subscription' or 'one_time'
+	Provider      string       `json:"provider,omitempty"`
+	Interval      string       `json:"interval,omitempty"`
+	IntervalCount int64        `json:"interval_count,omitempty"`
+	Summary       *PlanSummary `json:"summary,omitempty"`
+	Badges        []PlanBadge  `json:"badges,omitempty"`
+	CTA           *PlanCTA     `json:"cta,omitempty"`
+	Benefits      []string     `json:"benefits,omitempty"`
+	Price         *PlanPrice   `json:"price,omitempty"`
+}
+
+type PlanSummary struct {
+	Title    string `json:"title"`
+	Subtitle string `json:"subtitle,omitempty"`
+	Tagline  string `json:"tagline,omitempty"`
+	Audience string `json:"audience,omitempty"`
+	Details  string `json:"details,omitempty"`
+}
+
+type PlanBadge struct {
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+}
+
+type PlanCTA struct {
+	Label string `json:"label"`
+}
+
+type PlanPrice struct {
+	Amount   int64  `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+type WebhookData struct {
+	EventID        string    `json:"event_id"`
+	EventType      string    `json:"event_type"`
+	CustomerID     string    `json:"customer_id"`
+	SubscriptionID string    `json:"subscription_id,omitempty"`
+	InvoiceID      string    `json:"invoice_id,omitempty"`
+	Amount         int64     `json:"amount,omitempty"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+}

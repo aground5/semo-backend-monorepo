@@ -3,11 +3,7 @@ go 1.23.6
 use (
 	./pkg
 	./proto
-	./services/api
-	./services/api-legacy
-	./services/auth
-	./services/auth-legacy
 	./services/geo
-	./services/notification
+	./services/payment
 	./tools
 )
