@@ -7,33 +7,39 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/shopspring/decimal"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/provider"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
 	tossProvider "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/provider/toss"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/usecase"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 // TossWebhookHandler handles TossPayments webhook events
 type TossWebhookHandler struct {
-	logger       *zap.Logger
-	paymentRepo  repository.PaymentRepository
-	tossProvider *tossProvider.TossProvider
+	logger        *zap.Logger
+	paymentRepo   repository.PaymentRepository
+	creditService *usecase.CreditService
+	tossProvider  *tossProvider.TossProvider
 }
 
 // NewTossWebhookHandler creates a new TossWebhookHandler instance
 func NewTossWebhookHandler(
 	logger *zap.Logger,
 	paymentRepo repository.PaymentRepository,
+	creditService *usecase.CreditService,
 	secretKey string,
 	clientKey string,
 ) *TossWebhookHandler {
 	return &TossWebhookHandler{
-		logger:       logger,
-		paymentRepo:  paymentRepo,
-		tossProvider: tossProvider.NewTossProvider(secretKey, clientKey, logger),
+		logger:        logger,
+		paymentRepo:   paymentRepo,
+		creditService: creditService,
+		tossProvider:  tossProvider.NewTossProvider(secretKey, clientKey, logger),
 	}
 }
 
@@ -142,33 +148,174 @@ func (h *TossWebhookHandler) handlePaymentCompleted(ctx context.Context, event *
 		return nil
 	}
 
-	// Skip if already completed
-	if payment.Status == entity.PaymentStatusCompleted {
-		h.logger.Info("Payment already completed",
+	alreadyCompleted := payment.Status == entity.PaymentStatusCompleted
+
+	updates := map[string]interface{}{
+		"provider_payment_data": event.Data,
+	}
+
+	if !alreadyCompleted {
+		updates["status"] = string(entity.PaymentStatusCompleted)
+		updates["provider_payment_intent_id"] = event.PaymentKey
+		updates["provider_charge_id"] = event.TransactionKey
+		updates["paid_at"] = gorm.Expr("NOW()")
+	}
+
+	if err := h.paymentRepo.UpdatePaymentAfterConfirm(ctx, event.OrderID, updates); err != nil {
+		return err
+	}
+
+	if alreadyCompleted {
+		h.logger.Info("Payment already marked completed, ensured provider data is synced and proceeding with credit allocation",
+			zap.String("order_id", event.OrderID),
+			zap.String("payment_key", event.PaymentKey))
+	} else {
+		h.logger.Info("Payment marked as completed via webhook",
+			zap.String("order_id", event.OrderID),
+			zap.String("payment_key", event.PaymentKey))
+	}
+
+	if h.creditService == nil {
+		h.logger.Warn("Credit service not configured; skipping credit allocation",
 			zap.String("order_id", event.OrderID))
 		return nil
 	}
 
-	// Update payment status
-	updates := map[string]interface{}{
-		"status":                     string(entity.PaymentStatusCompleted),
-		"provider_payment_intent_id": event.PaymentKey,
-		"provider_charge_id":         event.TransactionKey,
-		"paid_at":                    gorm.Expr("NOW()"),
-		"provider_payment_data":      event.Data,
+	if payment.UniversalID == "" {
+		h.logger.Warn("Cannot allocate credits without universal ID",
+			zap.String("order_id", event.OrderID))
+		return nil
 	}
 
-	err = h.paymentRepo.UpdatePaymentAfterConfirm(ctx, event.OrderID, updates)
+	universalUUID, err := uuid.Parse(payment.UniversalID)
 	if err != nil {
-		return err
+		h.logger.Error("Invalid universal ID on payment; skipping credit allocation",
+			zap.String("order_id", event.OrderID),
+			zap.String("universal_id", payment.UniversalID),
+			zap.Error(err))
+		return nil
 	}
 
-	h.logger.Info("Payment marked as completed via webhook",
-		zap.String("order_id", event.OrderID),
-		zap.String("payment_key", event.PaymentKey))
+	extractString := func(m map[string]interface{}, key string) string {
+		if m == nil {
+			return ""
+		}
+		if val, ok := m[key]; ok {
+			if str, ok := val.(string); ok {
+				return str
+			}
+		}
+		return ""
+	}
 
-	// TODO: Allocate credits if applicable
-	// This would require checking if the payment has associated credits to allocate
+	var metadata map[string]interface{}
+	var planID string
+
+	candidateSources := []map[string]interface{}{}
+	if event.Data != nil {
+		if md, ok := event.Data["metadata"].(map[string]interface{}); ok {
+			candidateSources = append(candidateSources, md)
+		}
+		candidateSources = append(candidateSources, event.Data)
+	}
+	if payment.Metadata != nil {
+		if md, ok := payment.Metadata["metadata"].(map[string]interface{}); ok {
+			candidateSources = append(candidateSources, md)
+		}
+		candidateSources = append(candidateSources, payment.Metadata)
+	}
+
+	for _, candidate := range candidateSources {
+		if candidate == nil {
+			continue
+		}
+		if planID == "" {
+			if value := extractString(candidate, "plan_id"); value != "" {
+				planID = value
+				metadata = candidate
+				break
+			}
+			if value := extractString(candidate, "planId"); value != "" {
+				planID = value
+				metadata = candidate
+				break
+			}
+		}
+	}
+
+	if metadata == nil && payment.Metadata != nil {
+		metadata = payment.Metadata
+	}
+
+	if planID == "" {
+		h.logger.Warn("No plan_id found in Toss metadata; skipping credit allocation",
+			zap.String("order_id", event.OrderID),
+			zap.Any("metadata_keys", func() []string {
+				keys := make([]string, 0, len(metadata))
+				for k := range metadata {
+					keys = append(keys, k)
+				}
+				return keys
+			}()))
+		return nil
+	}
+
+	customerKey := extractString(metadata, "customer_key")
+	serviceProvider := extractString(metadata, "service_provider")
+	h.logger.Info("Attempting credit allocation from Toss metadata",
+		zap.String("order_id", event.OrderID),
+		zap.String("universal_id", payment.UniversalID),
+		zap.String("plan_id", planID),
+		zap.String("customer_key", customerKey),
+		zap.String("service_provider", serviceProvider))
+
+	allocatedCredits, err := h.creditService.AllocateCreditsForPayment(
+		ctx,
+		universalUUID,
+		event.OrderID,
+		"",
+		planID,
+		serviceProvider,
+	)
+	if err != nil {
+		h.logger.Error("Failed to allocate credits from Toss webhook",
+			zap.String("order_id", event.OrderID),
+			zap.String("universal_id", payment.UniversalID),
+			zap.String("plan_id", planID),
+			zap.Error(err))
+		return nil
+	}
+
+	if allocatedCredits == 0 {
+		h.logger.Info("No new credits allocated for Toss webhook event (likely already processed)",
+			zap.String("order_id", event.OrderID),
+			zap.String("universal_id", payment.UniversalID),
+			zap.String("plan_id", planID))
+		return nil
+	}
+
+	h.logger.Info("Credits allocated successfully from Toss webhook",
+		zap.String("order_id", event.OrderID),
+		zap.String("universal_id", payment.UniversalID),
+		zap.String("plan_id", planID),
+		zap.Int("credits", allocatedCredits))
+
+	creditUpdates := map[string]interface{}{
+		"credits_allocated":    decimal.NewFromInt(int64(allocatedCredits)),
+		"credits_allocated_at": gorm.Expr("NOW()"),
+	}
+
+	if err := h.paymentRepo.UpdatePaymentAfterConfirm(ctx, event.OrderID, creditUpdates); err != nil {
+		h.logger.Error("Failed to update payment after credit allocation",
+			zap.String("order_id", event.OrderID),
+			zap.String("universal_id", payment.UniversalID),
+			zap.Int("credits", allocatedCredits),
+			zap.Error(err))
+	} else {
+		h.logger.Info("Payment record updated with credit allocation",
+			zap.String("order_id", event.OrderID),
+			zap.Int("credits_allocated", allocatedCredits))
+	}
 
 	return nil
 }

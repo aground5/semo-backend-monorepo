@@ -44,12 +44,15 @@ func NewCreditService(
 }
 
 // AllocateCreditsForPayment allocates credits based on a successful payment
-func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, universalID uuid.UUID, invoiceID string, subscriptionID string, stripePriceID string) error {
+// Returns the number of credits newly allocated. When 0 is returned without error,
+// the allocation was already processed earlier (idempotency).
+func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, universalID uuid.UUID, invoiceID string, subscriptionID string, stripePriceID string, serviceProviderOverride string) (int, error) {
 	s.logger.Info("=== AllocateCreditsForPayment START ===",
 		zap.String("universal_id", universalID.String()),
 		zap.String("invoice_id", invoiceID),
 		zap.String("subscription_id", subscriptionID),
-		zap.String("price_id", stripePriceID))
+		zap.String("price_id", stripePriceID),
+		zap.String("service_provider", serviceProviderOverride))
 
 	// First check if credits were already allocated for this invoice (idempotency)
 	s.logger.Info("Checking for existing transaction", zap.String("invoice_id", invoiceID))
@@ -58,7 +61,7 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, universal
 		s.logger.Error("Failed to check existing transaction",
 			zap.String("invoice_id", invoiceID),
 			zap.Error(err))
-		return fmt.Errorf("failed to check existing transaction: %w", err)
+		return 0, fmt.Errorf("failed to check existing transaction: %w", err)
 	}
 
 	if existingTx != nil {
@@ -66,7 +69,7 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, universal
 			zap.String("invoice_id", invoiceID),
 			zap.String("universal_id", universalID.String()),
 			zap.String("existing_tx_id", fmt.Sprintf("%d", existingTx.ID)))
-		return nil
+		return 0, nil
 	} else {
 		s.logger.Info("No existing transaction found, proceeding with credit allocation")
 	}
@@ -75,16 +78,34 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, universal
 	s.logger.Info("Looking up payment plan by price ID", zap.String("price_id", stripePriceID))
 	plan, err := s.planRepo.GetByPriceID(ctx, stripePriceID)
 	if err != nil {
-		s.logger.Error("Failed to get payment plan from database",
+		s.logger.Error("Failed to get payment plan by price ID",
 			zap.String("price_id", stripePriceID),
 			zap.Error(err))
-		return fmt.Errorf("failed to get payment plan: %w", err)
+		return 0, fmt.Errorf("failed to get payment plan: %w", err)
 	}
 
 	if plan == nil {
-		s.logger.Error("No payment plan found for price ID",
-			zap.String("price_id", stripePriceID))
-		return fmt.Errorf("payment plan not found for price: %s", stripePriceID)
+		s.logger.Warn("No payment plan found by price ID, attempting product ID lookup",
+			zap.String("identifier", stripePriceID))
+
+		plansByProduct, err := s.planRepo.GetByProductID(ctx, stripePriceID)
+		if err != nil {
+			s.logger.Error("Failed to get payment plan by product ID",
+				zap.String("product_id", stripePriceID),
+				zap.Error(err))
+			return 0, fmt.Errorf("failed to get payment plan by product ID: %w", err)
+		}
+		if len(plansByProduct) == 0 {
+			s.logger.Error("No payment plan found by price or product ID",
+				zap.String("identifier", stripePriceID))
+			return 0, fmt.Errorf("payment plan not found for identifier: %s", stripePriceID)
+		}
+
+		plan = plansByProduct[0]
+		s.logger.Info("Found payment plan via product ID lookup",
+			zap.String("plan_name", plan.DisplayName),
+			zap.Int("credits_per_cycle", plan.CreditsPerCycle),
+			zap.String("provider_product_id", plan.ProviderProductID))
 	} else {
 		s.logger.Info("Found payment plan",
 			zap.String("plan_name", plan.DisplayName),
@@ -102,14 +123,23 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, universal
 		zap.String("description", description),
 		zap.String("reference_id", invoiceID))
 
-	balance, transaction, err := s.creditRepo.AllocateCredits(ctx, universalID, s.serviceProvider, amount, description, invoiceID)
+	serviceProvider := s.serviceProvider
+	if serviceProviderOverride != "" {
+		serviceProvider = serviceProviderOverride
+	}
+
+	s.logger.Info("Resolved service provider for credit allocation",
+		zap.String("universal_id", universalID.String()),
+		zap.String("service_provider", serviceProvider))
+
+	balance, transaction, err := s.creditRepo.AllocateCredits(ctx, universalID, serviceProvider, amount, description, invoiceID)
 	if err != nil {
 		s.logger.Error("CREDIT ALLOCATION FAILED IN REPOSITORY",
 			zap.String("universal_id", universalID.String()),
 			zap.String("invoice_id", invoiceID),
 			zap.String("amount", amount.String()),
 			zap.Error(err))
-		return fmt.Errorf("failed to allocate credits: %w", err)
+		return 0, fmt.Errorf("failed to allocate credits: %w", err)
 	}
 
 	s.logger.Info("CREDIT ALLOCATION SUCCESSFUL",
@@ -121,11 +151,13 @@ func (s *CreditService) AllocateCreditsForPayment(ctx context.Context, universal
 		zap.String("transaction_id", fmt.Sprintf("%d", transaction.ID)))
 
 	s.logger.Info("=== AllocateCreditsForPayment END ===")
-	return nil
+	return plan.CreditsPerCycle, nil
 }
 
 // AllocateCreditsWithMetadata allocates credits based on product metadata
-func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, universalID uuid.UUID, invoiceID string, creditsPerCycle int, productName string) error {
+// Returns the number of credits newly allocated. When 0 is returned without error,
+// the allocation was already processed earlier (idempotency).
+func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, universalID uuid.UUID, invoiceID string, creditsPerCycle int, productName string) (int, error) {
 	s.logger.Info("=== AllocateCreditsWithMetadata START ===",
 		zap.String("universal_id", universalID.String()),
 		zap.String("invoice_id", invoiceID),
@@ -139,7 +171,7 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, univers
 		s.logger.Error("Failed to check existing transaction",
 			zap.String("invoice_id", invoiceID),
 			zap.Error(err))
-		return fmt.Errorf("failed to check existing transaction: %w", err)
+		return 0, fmt.Errorf("failed to check existing transaction: %w", err)
 	}
 
 	if existingTx != nil {
@@ -147,7 +179,7 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, univers
 			zap.String("invoice_id", invoiceID),
 			zap.String("universal_id", universalID.String()),
 			zap.String("existing_tx_id", fmt.Sprintf("%d", existingTx.ID)))
-		return nil
+		return 0, nil
 	} else {
 		s.logger.Info("No existing transaction found, proceeding with credit allocation")
 	}
@@ -169,7 +201,7 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, univers
 			zap.String("invoice_id", invoiceID),
 			zap.String("amount", amount.String()),
 			zap.Error(err))
-		return fmt.Errorf("failed to allocate credits: %w", err)
+		return 0, fmt.Errorf("failed to allocate credits: %w", err)
 	}
 
 	s.logger.Info("CREDIT ALLOCATION WITH METADATA SUCCESSFUL",
@@ -181,7 +213,7 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, univers
 		zap.String("transaction_id", fmt.Sprintf("%d", transaction.ID)))
 
 	s.logger.Info("=== AllocateCreditsWithMetadata END ===")
-	return nil
+	return creditsPerCycle, nil
 }
 
 // GetBalance retrieves the current credit balance for a user

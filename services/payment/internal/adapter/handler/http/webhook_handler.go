@@ -840,24 +840,31 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 													zap.Int("credits", credits),
 													zap.String("product_name", productName))
 
-												if err := h.creditService.AllocateCreditsWithMetadata(
+												allocatedCredits, err := h.creditService.AllocateCreditsWithMetadata(
 													c.Request().Context(),
 													uuid.MustParse(universalID),
 													invoice.ID,
 													credits,
 													productName,
-												); err != nil {
+												)
+												if err != nil {
 													h.logger.Error("CREDIT ALLOCATION FROM METADATA FAILED",
 														zap.String("invoice_id", invoice.ID),
 														zap.String("universal_id", universalID),
 														zap.Int("credits", credits),
 														zap.String("product_name", productName),
 														zap.Error(err))
+												} else if allocatedCredits == 0 {
+													h.logger.Info("CREDIT ALLOCATION FROM METADATA SKIPPED (already processed)",
+														zap.String("invoice_id", invoice.ID),
+														zap.String("universal_id", universalID),
+														zap.Int("credits", credits),
+														zap.String("product_name", productName))
 												} else {
 													h.logger.Info("CREDIT ALLOCATION FROM METADATA SUCCESSFUL",
 														zap.String("invoice_id", invoice.ID),
 														zap.String("universal_id", universalID),
-														zap.Int("credits", credits),
+														zap.Int("credits", allocatedCredits),
 														zap.String("product_name", productName))
 												}
 											} else {
@@ -894,25 +901,34 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 												zap.String("subscription_id", subscriptionID),
 												zap.String("price_id", stripePriceID))
 
-											if err := h.creditService.AllocateCreditsForPayment(
+											allocatedCredits, err := h.creditService.AllocateCreditsForPayment(
 												c.Request().Context(),
 												uuid.MustParse(universalID),
 												invoice.ID,
 												subscriptionID,
 												stripePriceID,
-											); err != nil {
+												"",
+											)
+											if err != nil {
 												h.logger.Error("CREDIT ALLOCATION FROM DATABASE FAILED",
 													zap.String("invoice_id", invoice.ID),
 													zap.String("universal_id", universalID),
 													zap.String("subscription_id", subscriptionID),
 													zap.String("price_id", stripePriceID),
 													zap.Error(err))
+											} else if allocatedCredits == 0 {
+												h.logger.Info("CREDIT ALLOCATION FROM DATABASE SKIPPED (already processed)",
+													zap.String("invoice_id", invoice.ID),
+													zap.String("universal_id", universalID),
+													zap.String("subscription_id", subscriptionID),
+													zap.String("price_id", stripePriceID))
 											} else {
 												h.logger.Info("CREDIT ALLOCATION FROM DATABASE SUCCESSFUL",
 													zap.String("invoice_id", invoice.ID),
 													zap.String("universal_id", universalID),
 													zap.String("subscription_id", subscriptionID),
-													zap.String("price_id", stripePriceID))
+													zap.String("price_id", stripePriceID),
+													zap.Int("credits", allocatedCredits))
 											}
 										}
 									}
