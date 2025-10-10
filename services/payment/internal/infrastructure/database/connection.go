@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/wekeepgrowing/semo-backend-monorepo/pkg/logger"
@@ -44,11 +45,7 @@ func NewConnection(cfg *config.DatabaseConfig, log *zap.Logger) (*gorm.DB, error
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log.Info("Database connection established",
-		zap.String("host", cfg.Host),
-		zap.Int("port", cfg.Port),
-		zap.String("database", cfg.Name),
-	)
+	log.Info("Database connection established", connectionLogFields(cfg)...)
 
 	return db, nil
 }
@@ -66,4 +63,27 @@ func Close(db *gorm.DB, log *zap.Logger) error {
 
 	log.Info("Database connection closed")
 	return nil
+}
+
+func connectionLogFields(cfg *config.DatabaseConfig) []zap.Field {
+	if cfg.URL != "" {
+		return []zap.Field{
+			zap.String("url", maskedDatabaseURL(cfg.URL)),
+		}
+	}
+
+	return []zap.Field{
+		zap.String("host", cfg.Host),
+		zap.Int("port", cfg.Port),
+		zap.String("database", cfg.Name),
+	}
+}
+
+func maskedDatabaseURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "<invalid url>"
+	}
+
+	return u.Redacted()
 }

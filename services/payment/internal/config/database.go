@@ -7,6 +7,7 @@ import (
 
 // DatabaseConfig holds database connection configuration
 type DatabaseConfig struct {
+	URL      string `yaml:"url"`
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
 	Name     string `yaml:"name"`
@@ -22,6 +23,10 @@ type DatabaseConfig struct {
 
 // DSN returns the database connection string
 func (c *DatabaseConfig) DSN() string {
+	if c.URL != "" {
+		return c.URL
+	}
+
 	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
 		c.Host, c.Port, c.User, c.Password, c.Name)
 }
