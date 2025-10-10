@@ -3,8 +3,7 @@ service:
   environment: development
   version: v1.0.0
   client_urls:
-    - http://localhost:3000
-    - http://localhost:5173
+    - ${PAYMENT_CLIENT_URL}
   stripe_secret_key: REMOVED_STRIPE_TEST_SECRET_KEY
   stripe_webhook_secret: REMOVED_STRIPE_WEBHOOK_SECRET
   enable_test_endpoints: true
