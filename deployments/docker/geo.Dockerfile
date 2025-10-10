@@ -29,7 +29,7 @@ ENV VERSION=${VERSION} \
 COPY pkg        ./pkg
 COPY services   ./services
 
-RUN cd services/foo && \
+RUN cd services/geo && \
     CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH \
     go build -trimpath \
       -ldflags "-s -w \
