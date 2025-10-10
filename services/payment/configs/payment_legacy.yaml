@@ -34,8 +34,4 @@ jwt:
   secret:
 
 database:
-  host: ${PGHOST}
-  port: ${PGPORT}
-  user: ${PGUSER}
-  password: ${PGPASSWORD}
-  name: ${PGDATABASE}
+  url: ${DATABASE_URL}
