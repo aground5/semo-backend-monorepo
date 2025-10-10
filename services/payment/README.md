@@ -36,7 +36,8 @@ go run cmd/server/main.go
 
 ## Configuration
 
-The service expects a configuration file at `./configs/payment.yaml` or the path specified in the `CONFIG_PATH` environment variable.
+The service expects a configuration file at `./configs/payment_legacy.yaml` or the path specified in the `CONFIG_PATH` environment variable.  
+You can embed environment variable placeholders (for example `${PGHOST}`) inside the YAML; the loader expands them at runtime, which is useful when wiring Railway-provided credentials.
 
 ## API Endpoints
 

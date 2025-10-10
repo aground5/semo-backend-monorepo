@@ -35,8 +35,9 @@ jwt:
   secret:
 
 database:
-  host: localhost
-  port: 5433
-  user: myuser
-  password: postgresql
-  name: mydatabase
+  host: ${PGHOST}
+  port: ${PGPORT}
+  user: ${PGUSER}
+  password: ${PGPASSWORD}
+  name: ${PGDATABASE}
+  ssl_mode: ${PGSSLMODE}
