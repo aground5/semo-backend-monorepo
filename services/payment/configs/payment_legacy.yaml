@@ -38,5 +38,4 @@ database:
   port: ${PGPORT}
   user: ${PGUSER}
   password: ${PGPASSWORD}
-  name: ${PGDATA}
-  ssl_mode: ${PGSSLMODE}
+  name: ${PGDATABASE}

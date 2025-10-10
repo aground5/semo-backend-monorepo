@@ -12,7 +12,6 @@ type DatabaseConfig struct {
 	Name     string `yaml:"name"`
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
-	SSLMode  string `yaml:"ssl_mode"`
 
 	// Connection pool settings
 	MaxOpenConns    int           `yaml:"max_open_conns"`
@@ -23,6 +22,6 @@ type DatabaseConfig struct {
 
 // DSN returns the database connection string
 func (c *DatabaseConfig) DSN() string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		c.Host, c.Port, c.User, c.Password, c.Name, c.SSLMode)
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
+		c.Host, c.Port, c.User, c.Password, c.Name)
 }
