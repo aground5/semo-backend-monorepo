@@ -20,7 +20,7 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		configPath = "./configs/payment.yaml"
+		configPath = "./configs/payment_legacy.yaml"
 	}
 
 	// Ensure absolute path
@@ -35,9 +35,12 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
+	// Expand environment variables before parsing so configs can use ${VAR} placeholders
+	expanded := os.ExpandEnv(string(data))
+
 	// Parse YAML
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
