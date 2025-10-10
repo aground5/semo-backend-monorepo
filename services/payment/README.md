@@ -37,7 +37,8 @@ go run cmd/server/main.go
 ## Configuration
 
 The service expects a configuration file at `./configs/payment_legacy.yaml` or the path specified in the `CONFIG_PATH` environment variable.  
-You can embed environment variable placeholders (for example `${PGHOST}`) inside the YAML; the loader expands them at runtime, which is useful when wiring Railway-provided credentials.
+You can embed environment variable placeholders (for example `${DATABASE_URL}`) inside the YAML; the loader expands them at runtime, which is useful when wiring Railway-provided credentials.  
+For Postgres specifically, set `database.url` to your connection string (e.g. `${DATABASE_URL}`); if `url` is omitted, the legacy `host` / `port` / `user` fields are still supported for local development.
 
 ## API Endpoints
 
