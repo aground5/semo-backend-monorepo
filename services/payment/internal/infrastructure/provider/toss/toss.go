@@ -71,6 +71,9 @@ func (t *TossProvider) InitializePayment(ctx context.Context, req *provider.Init
 
 	if req.Metadata != nil {
 		for k, v := range req.Metadata {
+			if k == "plan_name" || k == "usage_label" {
+				continue
+			}
 			metadata[k] = v
 		}
 	}
