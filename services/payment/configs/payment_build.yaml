@@ -3,8 +3,7 @@ service:
   environment: development
   version: v1.0.0
   client_urls:
-    - http://localhost:3000
-    - http://localhost:5173
+    - ${CLIENT_URL}
   stripe_secret_key: sk_test_51Rm2eW4GnsDXmW0CL5ya0YEQU9ZmPZTNoqU1fjuqa38yuHsRwJKEXd8QDnIsYZ5MpWQrcuOdzj3Ir3X029M0UKd900MTaOKsqG
   stripe_webhook_secret: whsec_1774bf4416f0ef25a8f398e5d5c21f36f29ab921366993396ad8a2f8b9623aa0
   enable_test_endpoints: true
@@ -12,7 +11,7 @@ service:
     secret_key: test_sk_QbgMGZzorz5JWj0R4jPPVl5E1em4
     client_key: test_ck_GePWvyJnrKJwX0DWaJAOVgLzN97E
     webhook_secret: toss_webhook_secret_test
-    plans_file: ./configs/toss_plans.yaml
+    plans_file: ${PAYMENT_TOSS_PLANS_FILE}
   supabase:
     jwt_secret: Bhbu6ZNLzeETDhXy6XB6ssKzDDM4amES619RFLc4WhjGr783oq/uhLrWCnib5/uoZwbmn9SrTrUomSNpWMwuaA==
     project_url: https://fjctbfwohrqdmrdyqbig.supabase.co
@@ -35,4 +34,4 @@ jwt:
   secret:
 
 database:
-  url: postgresql://myuser:postgresql@localhost:5433/mydatabase
+  url: ${DATABASE_URL}
