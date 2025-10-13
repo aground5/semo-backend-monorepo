@@ -58,8 +58,11 @@ func (h *CreditHandler) GetUserCredits(c echo.Context) error {
 		})
 	}
 
+	// Determine service provider, falling back to default if query param is empty
+	serviceProvider := c.QueryParam("provider")
+
 	// Get user's credit balance
-	balance, err := h.creditService.GetBalance(c.Request().Context(), universalID)
+	balance, err := h.creditService.GetBalanceForProvider(c.Request().Context(), universalID, serviceProvider)
 	if err != nil {
 		h.logger.Error("Failed to get user credit balance",
 			zap.String("universal_id", universalID.String()),

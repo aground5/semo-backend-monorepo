@@ -47,6 +47,14 @@ func Migrate(db *gorm.DB, logger *zap.Logger) error {
 	}
 	logger.Info("GORM auto-migrations completed successfully")
 
+	// Run targeted migrations that AutoMigrate cannot express
+	logger.Info("Running post-automigrate patches...")
+	if err := migrateUserCreditBalancePrimaryKey(db, logger); err != nil {
+		logger.Error("Failed to run post-automigrate patches", zap.Error(err))
+		return err
+	}
+	logger.Info("Post-automigrate patches completed successfully")
+
 	// Create custom indexes and constraints
 	logger.Info("Creating custom indexes...")
 	if err := createCustomIndexes(db); err != nil {
@@ -85,6 +93,24 @@ func createCustomIndexes(db *gorm.DB) error {
 	}
 
 	return nil
+}
+
+func migrateUserCreditBalancePrimaryKey(db *gorm.DB, logger *zap.Logger) error {
+	logger.Info("Ensuring composite primary key on user_credit_balances")
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`ALTER TABLE user_credit_balances DROP CONSTRAINT IF EXISTS user_credit_balances_pkey`).Error; err != nil {
+			logger.Error("Failed to drop existing primary key on user_credit_balances", zap.Error(err))
+			return err
+		}
+
+		if err := tx.Exec(`ALTER TABLE user_credit_balances ADD PRIMARY KEY (universal_id, service_provider)`).Error; err != nil {
+			logger.Error("Failed to create composite primary key on user_credit_balances", zap.Error(err))
+			return err
+		}
+
+		return nil
+	})
 }
 
 // createExtensions creates required PostgreSQL extensions
@@ -228,7 +254,7 @@ func createCustomTypes(db *gorm.DB) error {
 			WHERE enumlabel = 'subscription_cancellation' 
 			AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'transaction_type')
 		)`).Scan(&hasSubscriptionCancellation)
-		
+
 		if !hasSubscriptionCancellation {
 			// Add the new enum value to existing type
 			// Note: ALTER TYPE ADD VALUE cannot be executed inside a transaction block in some PostgreSQL versions

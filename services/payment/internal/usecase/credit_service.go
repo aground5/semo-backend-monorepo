@@ -218,7 +218,17 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, univers
 
 // GetBalance retrieves the current credit balance for a user
 func (s *CreditService) GetBalance(ctx context.Context, universalID uuid.UUID) (*model.UserCreditBalance, error) {
-	balance, err := s.creditRepo.GetBalance(ctx, universalID, s.serviceProvider)
+	return s.GetBalanceForProvider(ctx, universalID, "")
+}
+
+// GetBalanceForProvider retrieves the current credit balance for a user and provider.
+func (s *CreditService) GetBalanceForProvider(ctx context.Context, universalID uuid.UUID, providerOverride string) (*model.UserCreditBalance, error) {
+	provider := strings.TrimSpace(providerOverride)
+	if provider == "" {
+		provider = s.serviceProvider
+	}
+
+	balance, err := s.creditRepo.GetBalance(ctx, universalID, provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get balance: %w", err)
 	}

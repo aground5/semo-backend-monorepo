@@ -64,7 +64,7 @@ func (CreditTransaction) TableName() string {
 // UserCreditBalance represents the current credit balance for a universal ID
 type UserCreditBalance struct {
 	UniversalID       uuid.UUID       `gorm:"column:universal_id;type:uuid;primaryKey" json:"universal_id"`
-	ServiceProvider   string          `gorm:"column:service_provider;type:varchar(100)" json:"service_provider"`
+	ServiceProvider   string          `gorm:"column:service_provider;type:varchar(100);primaryKey" json:"service_provider"`
 	CurrentBalance    decimal.Decimal `gorm:"type:decimal(15,2)" json:"current_balance"`
 	LastTransactionAt time.Time       `json:"last_transaction_at"`
 }
