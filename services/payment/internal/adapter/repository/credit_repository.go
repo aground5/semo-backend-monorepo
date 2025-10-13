@@ -89,32 +89,49 @@ func (r *creditRepository) AllocateCredits(ctx context.Context, universalID uuid
 			}
 		}
 
-		// Lock the user's balance row for update (or create if doesn't exist)
-		var currentBalance model.UserCreditBalance
-		r.logger.Info("Attempting to lock/create user balance row",
+		// Ensure a balance row exists, then lock it for update
+		r.logger.Info("Ensuring user balance row exists",
 			zap.String("universal_id", universalID.String()),
-			zap.String("transaction_type", "credit_allocation"))
+			zap.String("service_provider", serviceProvider))
 
+		createResult := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "universal_id"}, {Name: "service_provider"}},
+			DoNothing: true,
+		}).Create(&model.UserCreditBalance{
+			UniversalID:     universalID,
+			ServiceProvider: serviceProvider,
+			CurrentBalance:  decimal.Zero,
+		})
+		if createResult.Error != nil {
+			r.logger.Error("Failed to ensure balance row exists",
+				zap.String("universal_id", universalID.String()),
+				zap.String("service_provider", serviceProvider),
+				zap.Error(createResult.Error))
+			return fmt.Errorf("failed to ensure balance row: %w", createResult.Error)
+		}
+
+		r.logger.Info("Locking user balance row for update",
+			zap.String("universal_id", universalID.String()),
+			zap.String("service_provider", serviceProvider),
+			zap.Bool("balance_was_created", createResult.RowsAffected == 1))
+
+		var currentBalance model.UserCreditBalance
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("universal_id = ? AND service_provider = ?", universalID, serviceProvider).
-			FirstOrCreate(&currentBalance, model.UserCreditBalance{
-				UniversalID:     universalID,
-				ServiceProvider: serviceProvider,
-				CurrentBalance:  decimal.Zero,
-			}).Error
-
+			First(&currentBalance).Error
 		if err != nil {
-			r.logger.Error("Failed to lock/create balance row",
+			r.logger.Error("Failed to lock balance row",
 				zap.String("universal_id", universalID.String()),
+				zap.String("service_provider", serviceProvider),
 				zap.Error(err))
 			return fmt.Errorf("failed to lock balance: %w", err)
 		}
 		currentBalance.ServiceProvider = serviceProvider
 
-		r.logger.Info("Successfully locked/created balance row",
+		r.logger.Info("Successfully locked balance row",
 			zap.String("universal_id", universalID.String()),
-			zap.String("current_balance", currentBalance.CurrentBalance.String()),
-			zap.Bool("was_created", currentBalance.LastTransactionAt.IsZero()))
+			zap.String("service_provider", serviceProvider),
+			zap.String("current_balance", currentBalance.CurrentBalance.String()))
 
 		// Calculate new balance
 		newBalance := currentBalance.CurrentBalance.Add(amount)
