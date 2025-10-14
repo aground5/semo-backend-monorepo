@@ -8,9 +8,8 @@ service:
   stripe_webhook_secret: REMOVED_STRIPE_WEBHOOK_SECRET
   enable_test_endpoints: true
   toss:
-    secret_key: REMOVED_TOSS_TEST_SECRET_KEY
-    client_key: REMOVED_TOSS_TEST_CLIENT_KEY
-    webhook_secret: toss_webhook_secret_test
+    secret_key: ${PAYMENT_TOSS_SECRET_KEY}
+    client_key: ${PAYMENT_TOSS_CLIENT_KEY}
     plans_file: ${PAYMENT_TOSS_PLANS_FILE}
   supabase:
     jwt_secret: REMOVED_SUPABASE_JWT_SECRET
