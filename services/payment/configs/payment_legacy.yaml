@@ -8,9 +8,8 @@ service:
   stripe_webhook_secret: whsec_1774bf4416f0ef25a8f398e5d5c21f36f29ab921366993396ad8a2f8b9623aa0
   enable_test_endpoints: true
   toss:
-    secret_key: test_sk_QbgMGZzorz5JWj0R4jPPVl5E1em4
-    client_key: test_ck_GePWvyJnrKJwX0DWaJAOVgLzN97E
-    webhook_secret: toss_webhook_secret_test
+    secret_key: ${PAYMENT_TOSS_SECRET_KEY}
+    client_key: ${PAYMENT_TOSS_CLIENT_KEY}
     plans_file: ${PAYMENT_TOSS_PLANS_FILE}
   supabase:
     jwt_secret: Bhbu6ZNLzeETDhXy6XB6ssKzDDM4amES619RFLc4WhjGr783oq/uhLrWCnib5/uoZwbmn9SrTrUomSNpWMwuaA==
@@ -35,3 +34,6 @@ jwt:
 
 database:
   url: ${DATABASE_URL}
+
+webhook_semolens:
+  secret: 1d6bc6252a18e1208afb28f1c6b00cecdb720d45504a3e389e799729c2971710

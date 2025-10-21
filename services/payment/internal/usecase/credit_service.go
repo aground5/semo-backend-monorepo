@@ -216,6 +216,48 @@ func (s *CreditService) AllocateCreditsWithMetadata(ctx context.Context, univers
 	return creditsPerCycle, nil
 }
 
+// AllocateCreditsManual allocates a fixed number of credits using the provided details.
+// This supports system-driven adjustments like Supabase onboarding credits.
+func (s *CreditService) AllocateCreditsManual(ctx context.Context, universalID uuid.UUID, serviceProvider string, credits int, description string, referenceID string) (*model.UserCreditBalance, *model.CreditTransaction, error) {
+	if credits <= 0 {
+		return nil, nil, fmt.Errorf("credits must be positive for manual allocation")
+	}
+
+	resolvedProvider := strings.TrimSpace(serviceProvider)
+	if resolvedProvider == "" {
+		resolvedProvider = s.serviceProvider
+	}
+
+	amount := decimal.NewFromInt(int64(credits))
+
+	s.logger.Info("Allocating manual credits",
+		zap.String("universal_id", universalID.String()),
+		zap.String("service_provider", resolvedProvider),
+		zap.Int("credits", credits),
+		zap.String("reference_id", referenceID),
+		zap.String("description", description))
+
+	balance, transaction, err := s.creditRepo.AllocateCredits(ctx, universalID, resolvedProvider, amount, description, referenceID)
+	if err != nil {
+		s.logger.Error("Manual credit allocation failed",
+			zap.String("universal_id", universalID.String()),
+			zap.String("service_provider", resolvedProvider),
+			zap.Int("credits", credits),
+			zap.String("reference_id", referenceID),
+			zap.Error(err))
+		return nil, nil, fmt.Errorf("failed to allocate manual credits: %w", err)
+	}
+
+	s.logger.Info("Manual credit allocation successful",
+		zap.String("universal_id", universalID.String()),
+		zap.String("service_provider", resolvedProvider),
+		zap.String("new_balance", balance.CurrentBalance.String()),
+		zap.String("reference_id", referenceID),
+		zap.Int64("transaction_id", transaction.ID))
+
+	return balance, transaction, nil
+}
+
 // GetBalance retrieves the current credit balance for a user
 func (s *CreditService) GetBalance(ctx context.Context, universalID uuid.UUID) (*model.UserCreditBalance, error) {
 	return s.GetBalanceForProvider(ctx, universalID, "")
