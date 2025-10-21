@@ -34,3 +34,6 @@ jwt:
 
 database:
   url: ${DATABASE_URL}
+
+webhook_semolens:
+  secret: REMOVED_WEBHOOK_SECRET

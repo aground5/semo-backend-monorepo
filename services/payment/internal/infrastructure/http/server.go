@@ -106,7 +106,14 @@ func (s *Server) setupRoutes() {
 	paymentHandler := handlers.NewPaymentHandler(paymentUsecase, s.logger)
 	creditHandler := handlers.NewCreditHandler(s.logger, creditService, creditTransactionService)
 	productHandler := handlers.NewProductHandler(productUseCase, factory, s.repos.CustomerMapping, s.logger)
-	tossWebhookHandler := handlers.NewTossWebhookHandler(s.logger, s.repos.Payment, creditService, s.config.Service.Toss.SecretKey, s.config.Service.Toss.ClientKey)
+	tossWebhookHandler := handlers.NewTossWebhookHandler(
+		s.logger,
+		s.repos.Payment,
+		creditService,
+		s.config.Service.Toss.SecretKey,
+		s.config.Service.Toss.ClientKey,
+		s.config.Webhook.Secret,
+	)
 
 	// JWT middleware configuration
 	jwtConfig := auth.JWTConfig{
