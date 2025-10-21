@@ -15,6 +15,7 @@ type Config struct {
 	Log      LogConfig      `yaml:"log"`
 	JWT      JWTConfig      `yaml:"jwt"`
 	Email    EmailConfig    `yaml:"email"`
+	Webhook  WebhookConfig  `yaml:"webhook_semolens"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -45,4 +46,8 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+type WebhookConfig struct {
+	Secret string `yaml:"secret"`
 }

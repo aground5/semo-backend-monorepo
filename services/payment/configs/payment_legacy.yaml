@@ -34,3 +34,6 @@ jwt:
 
 database:
   url: ${DATABASE_URL}
+
+webhook_semolens:
+  secret: 1d6bc6252a18e1208afb28f1c6b00cecdb720d45504a3e389e799729c2971710

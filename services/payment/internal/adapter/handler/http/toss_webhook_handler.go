@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -21,10 +22,11 @@ import (
 
 // TossWebhookHandler handles TossPayments webhook events
 type TossWebhookHandler struct {
-	logger        *zap.Logger
-	paymentRepo   repository.PaymentRepository
-	creditService *usecase.CreditService
-	tossProvider  *tossProvider.TossProvider
+	logger         *zap.Logger
+	paymentRepo    repository.PaymentRepository
+	creditService  *usecase.CreditService
+	tossProvider   *tossProvider.TossProvider
+	supabaseSecret string
 }
 
 // NewTossWebhookHandler creates a new TossWebhookHandler instance
@@ -34,12 +36,14 @@ func NewTossWebhookHandler(
 	creditService *usecase.CreditService,
 	secretKey string,
 	clientKey string,
+	supabaseSecret string,
 ) *TossWebhookHandler {
 	return &TossWebhookHandler{
-		logger:        logger,
-		paymentRepo:   paymentRepo,
-		creditService: creditService,
-		tossProvider:  tossProvider.NewTossProvider(secretKey, clientKey, logger),
+		logger:         logger,
+		paymentRepo:    paymentRepo,
+		creditService:  creditService,
+		tossProvider:   tossProvider.NewTossProvider(secretKey, clientKey, logger),
+		supabaseSecret: supabaseSecret,
 	}
 }
 
@@ -60,6 +64,77 @@ func (h *TossWebhookHandler) Handle(c echo.Context) error {
 
 	// Get signature from header (if TossPayments provides one)
 	signature := c.Request().Header.Get("X-Toss-Signature")
+	xWebhookSecret := c.Request().Header.Get("X-Webhook-Secret")
+
+	if h.supabaseSecret != "" && xWebhookSecret == h.supabaseSecret {
+		var supabasePayload SupabaseWebhookPayload
+		if err := json.Unmarshal(body, &supabasePayload); err != nil {
+			h.logger.Warn("Supabase webhook payload parse failed",
+				zap.Error(err))
+			return c.JSON(http.StatusBadRequest, echo.Map{
+				"error": "Failed to parse Supabase webhook payload",
+				"code":  "INVALID_SUPABASE_PAYLOAD",
+			})
+		}
+
+		h.logger.Info("Received Supabase webhook event",
+			zap.String("user_id", supabasePayload.UserID),
+			zap.String("email", supabasePayload.Email),
+			zap.String("service_provider", supabasePayload.ServiceProvider),
+			zap.String("confirmed_at", supabasePayload.ConfirmedAt),
+			zap.String("created_at", supabasePayload.CreatedAt))
+
+		if h.creditService == nil {
+			h.logger.Warn("Credit service not configured; skipping Supabase credit allocation",
+				zap.String("user_id", supabasePayload.UserID))
+			return c.JSON(http.StatusOK, echo.Map{
+				"status": "ok",
+			})
+		}
+
+		if supabasePayload.UserID == "" || supabasePayload.ServiceProvider == "" {
+			h.logger.Warn("Supabase payload missing required fields",
+				zap.String("user_id", supabasePayload.UserID),
+				zap.String("service_provider", supabasePayload.ServiceProvider))
+			return c.JSON(http.StatusBadRequest, echo.Map{
+				"error": "Missing required Supabase payload fields",
+				"code":  "INVALID_SUPABASE_PAYLOAD",
+			})
+		}
+
+		userUUID, err := uuid.Parse(supabasePayload.UserID)
+		if err != nil {
+			h.logger.Warn("Invalid Supabase user ID; skipping credit allocation",
+				zap.String("user_id", supabasePayload.UserID),
+				zap.Error(err))
+			return c.JSON(http.StatusBadRequest, echo.Map{
+				"error": "Invalid user ID format",
+				"code":  "INVALID_SUPABASE_PAYLOAD",
+			})
+		}
+
+		referenceID := fmt.Sprintf("supabase:%s:%s:%s", supabasePayload.ServiceProvider, supabasePayload.UserID, supabasePayload.ReferenceTimestamp())
+		description := fmt.Sprintf("Supabase confirmation credit for %s", supabasePayload.Email)
+
+		if _, _, err := h.creditService.AllocateCreditsManual(c.Request().Context(), userUUID, supabasePayload.ServiceProvider, 1, description, referenceID); err != nil {
+			h.logger.Error("Failed to allocate Supabase confirmation credit",
+				zap.String("user_id", supabasePayload.UserID),
+				zap.String("service_provider", supabasePayload.ServiceProvider),
+				zap.Error(err))
+			return c.JSON(http.StatusInternalServerError, echo.Map{
+				"error": "Failed to allocate credit",
+				"code":  "SUPABASE_CREDIT_ALLOCATION_FAILED",
+			})
+		}
+
+		h.logger.Info("Supabase confirmation credit allocated",
+			zap.String("user_id", supabasePayload.UserID),
+			zap.String("service_provider", supabasePayload.ServiceProvider))
+
+		return c.JSON(http.StatusOK, echo.Map{
+			"status": "ok",
+		})
+	}
 
 	var webhookPayload TossWebhookPayload
 	if err := json.Unmarshal(body, &webhookPayload); err != nil {
@@ -431,6 +506,23 @@ func (h *TossWebhookHandler) handlePaymentFailed(ctx context.Context, event *pro
 		zap.String("failure_message", failureMessage))
 
 	return nil
+}
+
+// SupabaseWebhookPayload captures the Supabase signup webhook payload
+type SupabaseWebhookPayload struct {
+	ConfirmedAt     string `json:"confirmed_at"`
+	CreatedAt       string `json:"created_at"`
+	Email           string `json:"email"`
+	ServiceProvider string `json:"service_provider"`
+	UserID          string `json:"user_id"`
+}
+
+// ReferenceTimestamp returns the timestamp used for idempotency reference
+func (p SupabaseWebhookPayload) ReferenceTimestamp() string {
+	if p.ConfirmedAt != "" {
+		return p.ConfirmedAt
+	}
+	return p.CreatedAt
 }
 
 // TossWebhookPayload represents the structure of Toss webhook payload
