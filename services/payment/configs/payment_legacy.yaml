@@ -12,10 +12,10 @@ service:
     client_key: ${PAYMENT_TOSS_CLIENT_KEY}
     plans_file: ${PAYMENT_TOSS_PLANS_FILE}
   supabase:
-    jwt_secret: Bhbu6ZNLzeETDhXy6XB6ssKzDDM4amES619RFLc4WhjGr783oq/uhLrWCnib5/uoZwbmn9SrTrUomSNpWMwuaA==
-    project_url: https://fjctbfwohrqdmrdyqbig.supabase.co
+    jwt_secret: ${SUPABASE_JWT_SECRET}
+    project_url: ${SUPABASE_PROJECT_URL}
     # Using service_role key for server-side workspace verification
-    api_key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqY3RiZndvaHJxZG1yZHlxYmlnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTg5MTQzMSwiZXhwIjoyMDY3NDY3NDMxfQ.HWa98PbqZIDZmiWsjGMiy06lPTHH2zYpnm43Xzr_JD0
+    api_key: ${SUPABASE_API_KEY}
 
 server:
   http:
@@ -36,4 +36,4 @@ database:
   url: ${DATABASE_URL}
 
 webhook_semolens:
-  secret: 1d6bc6252a18e1208afb28f1c6b00cecdb720d45504a3e389e799729c2971710
+  secret: ${SEMOLENS_WEBHOOK}
