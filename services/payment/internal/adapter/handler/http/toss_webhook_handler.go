@@ -66,16 +66,42 @@ func (h *TossWebhookHandler) Handle(c echo.Context) error {
 	signature := c.Request().Header.Get("X-Toss-Signature")
 	xWebhookSecret := c.Request().Header.Get("X-Webhook-Secret")
 
-	if h.supabaseSecret != "" && xWebhookSecret == h.supabaseSecret {
+	if xWebhookSecret != "" {
+		if h.supabaseSecret == "" {
+			h.logger.Warn("Supabase webhook secret header present but service is not configured with a secret",
+				zap.Int("body_len", len(body)))
+			return c.JSON(http.StatusUnauthorized, echo.Map{
+				"error": "Supabase webhook secret not configured",
+				"code":  "INVALID_SUPABASE_SECRET",
+			})
+		}
+
+		if xWebhookSecret != h.supabaseSecret {
+			h.logger.Warn("Supabase webhook secret mismatch",
+				zap.Int("body_len", len(body)),
+				zap.String("provided_prefix", maskSecretPrefix(xWebhookSecret)),
+				zap.String("expected_prefix", maskSecretPrefix(h.supabaseSecret)))
+			return c.JSON(http.StatusUnauthorized, echo.Map{
+				"error": "Invalid Supabase webhook secret",
+				"code":  "INVALID_SUPABASE_SECRET",
+			})
+		}
+
 		var supabasePayload SupabaseWebhookPayload
 		if err := json.Unmarshal(body, &supabasePayload); err != nil {
 			h.logger.Warn("Supabase webhook payload parse failed",
-				zap.Error(err))
+				zap.Error(err),
+				zap.Int("body_len", len(body)),
+				zap.String("raw_body", truncateBody(body)))
 			return c.JSON(http.StatusBadRequest, echo.Map{
 				"error": "Failed to parse Supabase webhook payload",
 				"code":  "INVALID_SUPABASE_PAYLOAD",
 			})
 		}
+
+		h.logger.Info("Received raw Supabase webhook payload",
+			zap.Int("body_len", len(body)),
+			zap.String("raw_body", truncateBody(body)))
 
 		h.logger.Info("Received Supabase webhook event",
 			zap.String("user_id", supabasePayload.UserID),
@@ -139,7 +165,9 @@ func (h *TossWebhookHandler) Handle(c echo.Context) error {
 	var webhookPayload TossWebhookPayload
 	if err := json.Unmarshal(body, &webhookPayload); err != nil {
 		h.logger.Warn("Failed to parse Toss webhook payload for logging",
-			zap.Error(err))
+			zap.Error(err),
+			zap.Int("body_len", len(body)),
+			zap.String("raw_body", truncateBody(body)))
 	} else {
 		h.logger.Info("Processing Toss webhook event",
 			zap.String("event_type", webhookPayload.EventType),
@@ -150,6 +178,10 @@ func (h *TossWebhookHandler) Handle(c echo.Context) error {
 			h.logger.Warn("Toss webhook failure details",
 				zap.String("order_id", webhookPayload.Data.OrderID),
 				zap.Any("failure", webhookPayload.Data.Failure))
+		}
+		if webhookPayload.EventType == "" && webhookPayload.Data.OrderID == "" && webhookPayload.Data.Status == "" {
+			h.logger.Warn("Toss webhook payload missing key fields",
+				zap.String("raw_body", truncateBody(body)))
 		}
 	}
 
@@ -540,4 +572,22 @@ type TossWebhookEventData struct {
 	Failure       interface{} `json:"failure,omitempty"`
 	Cancels       interface{} `json:"cancels,omitempty"`
 	TransactionID string      `json:"transactionId,omitempty"`
+}
+
+func truncateBody(body []byte) string {
+	const maxLen = 1024
+	if len(body) <= maxLen {
+		return string(body)
+	}
+	return fmt.Sprintf("%s... (truncated %d bytes total)", string(body[:maxLen]), len(body))
+}
+
+func maskSecretPrefix(secret string) string {
+	if secret == "" {
+		return ""
+	}
+	if len(secret) <= 4 {
+		return "***"
+	}
+	return secret[:2] + "***" + secret[len(secret)-2:]
 }
