@@ -37,7 +37,9 @@ func (h *PlansHandler) GetSubscriptionPlans(c echo.Context) error {
 		})
 	}
 
-	dbPlans, err := h.planRepo.GetByTypeAndProvider(ctx, model.PlanTypeSubscription, provider)
+	currency := strings.ToUpper(strings.TrimSpace(c.QueryParam("currency")))
+
+	dbPlans, err := h.planRepo.GetByTypeAndProvider(ctx, model.PlanTypeSubscription, provider, currency)
 	if err != nil {
 		h.logger.Error("Error fetching subscription-type payment plans from database", zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -79,7 +81,9 @@ func (h *PlansHandler) GetOneTimePlans(c echo.Context) error {
 		})
 	}
 
-	dbPlans, err := h.planRepo.GetByTypeAndProvider(ctx, model.PlanTypeOneTime, provider)
+	currency := strings.ToUpper(strings.TrimSpace(c.QueryParam("currency")))
+
+	dbPlans, err := h.planRepo.GetByTypeAndProvider(ctx, model.PlanTypeOneTime, provider, currency)
 	if err != nil {
 		h.logger.Error("Error fetching one-time payment plans from database", zap.Error(err))
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -115,14 +119,19 @@ func (h *PlansHandler) GetPlans(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	provider := c.QueryParam("provider")
+	currency := strings.ToUpper(strings.TrimSpace(c.QueryParam("currency")))
 
 	dbPlans, err := h.planRepo.GetAll(ctx)
-	if provider != "" {
+	if provider != "" || currency != "" {
 		filtered := make([]*model.PaymentPlan, 0, len(dbPlans))
 		for _, plan := range dbPlans {
-			if plan.PgProvider == provider {
-				filtered = append(filtered, plan)
+			if provider != "" && plan.PgProvider != provider {
+				continue
 			}
+			if currency != "" && strings.ToUpper(plan.Currency) != currency {
+				continue
+			}
+			filtered = append(filtered, plan)
 		}
 		dbPlans = filtered
 	}
@@ -160,6 +169,7 @@ func mapPaymentPlanToEntity(dbPlan *model.PaymentPlan) entity.Plan {
 		Name:     dbPlan.DisplayName,
 		Type:     dbPlan.Type,
 		Provider: dbPlan.PgProvider,
+		Currency: dbPlan.Currency,
 	}
 
 	if plan.Type == "" {

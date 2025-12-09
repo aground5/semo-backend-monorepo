@@ -41,4 +41,5 @@ type TossConfig struct {
 	ClientKey     string `yaml:"client_key"`
 	WebhookSecret string `yaml:"webhook_secret"`
 	PlansFile     string `yaml:"plans_file"`
+	USDPlansFile  string `yaml:"usd_plans_file"`
 }

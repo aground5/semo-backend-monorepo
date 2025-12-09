@@ -2,6 +2,7 @@ plans:
   - provider_price_id: toss_price_onetime_pro
     provider_product_id: toss_prod_onetime_pro
     pg_provider: toss
+    currency: KRW
     display_name: SEMO Toss Pro Package
     type: one_time
     credits_per_cycle: 10
@@ -34,6 +35,7 @@ plans:
   - provider_price_id: toss_price_onetime_light
     provider_product_id: toss_prod_onetime_light
     pg_provider: toss
+    currency: KRW
     display_name: SEMO Toss Light Package
     type: one_time
     credits_per_cycle: 1
