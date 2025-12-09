@@ -68,6 +68,9 @@ func (t *TossProvider) InitializePayment(ctx context.Context, req *provider.Init
 	if req.OrderName != "" {
 		metadata["order_name"] = req.OrderName
 	}
+	if req.Currency != "" {
+		metadata["currency"] = req.Currency
+	}
 
 	if req.Metadata != nil {
 		for k, v := range req.Metadata {
@@ -89,6 +92,7 @@ func (t *TossProvider) InitializePayment(ctx context.Context, req *provider.Init
 			"order_name":   req.OrderName,
 			"customer_key": req.CustomerKey,
 			"plan_id":      req.PlanID,
+			"currency":     req.Currency,
 			"metadata":     metadata,
 		},
 	}, nil
