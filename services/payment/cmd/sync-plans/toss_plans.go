@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/model"
 	"gopkg.in/yaml.v3"
@@ -17,6 +18,7 @@ type tossPlanEntry struct {
 	ProviderPriceID   string                 `yaml:"provider_price_id"`
 	ProviderProductID string                 `yaml:"provider_product_id"`
 	PgProvider        string                 `yaml:"pg_provider"`
+	Currency          string                 `yaml:"currency"`
 	DisplayName       string                 `yaml:"display_name"`
 	Type              string                 `yaml:"type"`
 	CreditsPerCycle   int                    `yaml:"credits_per_cycle"`
@@ -72,10 +74,23 @@ func loadTossPlansFromYAML(path string) ([]*model.PaymentPlan, error) {
 			features[k] = v
 		}
 
+		currency := strings.ToUpper(strings.TrimSpace(entry.Currency))
+		if currency == "" && entry.Features != nil {
+			if priceMap, ok := entry.Features["price"].(map[string]interface{}); ok {
+				if value, ok := priceMap["currency"].(string); ok {
+					currency = strings.ToUpper(strings.TrimSpace(value))
+				}
+			}
+		}
+		if currency == "" {
+			currency = "KRW"
+		}
+
 		plans = append(plans, &model.PaymentPlan{
 			ProviderPriceID:   entry.ProviderPriceID,
 			ProviderProductID: entry.ProviderProductID,
 			PgProvider:        pgProvider,
+			Currency:          currency,
 			DisplayName:       entry.DisplayName,
 			Type:              planType,
 			CreditsPerCycle:   entry.CreditsPerCycle,

@@ -59,11 +59,19 @@ func main() {
 	}
 
 	tossPlansSynced := 0
+	tossPlanFiles := []string{}
 	if cfg.Service.Toss.PlansFile != "" {
-		logger.Info("Syncing Toss plans from YAML",
-			zap.String("path", cfg.Service.Toss.PlansFile))
+		tossPlanFiles = append(tossPlanFiles, cfg.Service.Toss.PlansFile)
+	}
+	if cfg.Service.Toss.USDPlansFile != "" {
+		tossPlanFiles = append(tossPlanFiles, cfg.Service.Toss.USDPlansFile)
+	}
 
-		plans, err := loadTossPlansFromYAML(cfg.Service.Toss.PlansFile)
+	for _, planPath := range tossPlanFiles {
+		logger.Info("Syncing Toss plans from YAML",
+			zap.String("path", planPath))
+
+		plans, err := loadTossPlansFromYAML(planPath)
 		if err != nil {
 			logger.Fatal("Failed to load Toss plans from YAML", zap.Error(err))
 		}
@@ -80,7 +88,9 @@ func main() {
 			}
 			tossPlansSynced++
 		}
+	}
 
+	if tossPlansSynced > 0 {
 		logger.Info("Toss plans synced",
 			zap.Int("plans_synced", tossPlansSynced))
 	}

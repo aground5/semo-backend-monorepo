@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/stripe/stripe-go/v79"
 	"github.com/stripe/stripe-go/v79/price"
@@ -181,9 +182,11 @@ func (s *PlanSyncService) SyncPriceWithProduct(ctx context.Context, p *stripe.Pr
 	delete(features, "interval")
 	delete(features, "interval_count")
 
+	currency := strings.ToUpper(string(p.Currency))
+
 	priceFeature := map[string]interface{}{
 		"amount":   p.UnitAmount,
-		"currency": string(p.Currency),
+		"currency": currency,
 	}
 
 	if planType == model.PlanTypeSubscription && p.Recurring != nil {
@@ -208,6 +211,7 @@ func (s *PlanSyncService) SyncPriceWithProduct(ctx context.Context, p *stripe.Pr
 		ProviderPriceID:   p.ID,
 		ProviderProductID: prod.ID,
 		PgProvider:        "stripe",
+		Currency:          currency,
 		DisplayName:       prod.Name,
 		Type:              planType,
 		CreditsPerCycle:   creditsPerCycle,

@@ -1,0 +1,60 @@
+plans:
+  - provider_price_id: paypal_price_onetime_pro_usd
+    provider_product_id: paypal_prod_onetime_pro_usd
+    pg_provider: toss
+    display_name: SEMO PayPal Pro Package
+    type: one_time
+    credits_per_cycle: 10
+    features:
+      description: 10 analysis credits (10 reports)
+      price:
+        amount: 990
+        currency: USD
+      summary:
+        title: Pro Package
+        subtitle: (10 Reports)
+        tagline: For teams that want to run audits regularly and turn insights into ongoing improvements.
+      badges:
+        - kind: recommendation
+          label: Recommended
+        - kind: savings
+          label: Save about 48% compared to the Lite package
+      cta:
+        label: Start Pro Package
+      benefits:
+        - Use up to 10 analyses
+        - Summary of key AI analysis insights
+        - Condensed KPI performance report
+        - UX diagnosis by category and device
+        - Competitor & market benchmark dashboard
+        - Prioritized action guide for improvements
+        - Design improvement suggestion package
+    sort_order: 0
+    is_active: true
+  - provider_price_id: paypal_price_onetime_lite_usd
+    provider_product_id: paypal_prod_onetime_lite_usd
+    pg_provider: toss
+    display_name: SEMO PayPal Lite Package
+    type: one_time
+    credits_per_cycle: 1
+    features:
+      description: 1 analysis credit (1 report)
+      price:
+        amount: 190
+        currency: USD
+      summary:
+        title: Lite Package
+        subtitle: (1 Report)
+        tagline: For teams that need a precise one-time diagnosis at the moment it matters.
+      cta:
+        label: Start Lite Package
+      benefits:
+        - Use 1 analysis
+        - Summary of key AI analysis insights
+        - Condensed KPI performance report
+        - UX diagnosis by category and device
+        - Competitor benchmark comparison
+        - Prioritized action guide for improvements
+        - Design improvement suggestion package
+    sort_order: 10
+    is_active: true

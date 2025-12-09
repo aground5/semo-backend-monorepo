@@ -11,6 +11,8 @@ service:
     secret_key: ${PAYMENT_TOSS_SECRET_KEY}
     client_key: ${PAYMENT_TOSS_CLIENT_KEY}
     plans_file: ${PAYMENT_TOSS_PLANS_FILE}
+    usd_plans_file: ${PAYMENT_TOSS_PLANS_USD_FILE}
+
   supabase:
     jwt_secret: ${SUPABASE_JWT_SECRET}
     project_url: ${SUPABASE_PROJECT_URL}
