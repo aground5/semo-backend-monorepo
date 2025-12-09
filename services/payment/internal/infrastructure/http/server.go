@@ -105,7 +105,7 @@ func (s *Server) setupRoutes() {
 	paymentUsecase := usecase.NewPaymentUsecase(s.repos.Payment, nil, s.logger)
 	paymentHandler := handlers.NewPaymentHandler(paymentUsecase, s.logger)
 	creditHandler := handlers.NewCreditHandler(s.logger, creditService, creditTransactionService)
-	productHandler := handlers.NewProductHandler(productUseCase, factory, s.repos.CustomerMapping, s.logger)
+	productHandler := handlers.NewProductHandler(productUseCase, factory, s.repos.CustomerMapping, s.repos.Plan, s.logger)
 	tossWebhookHandler := handlers.NewTossWebhookHandler(
 		s.logger,
 		s.repos.Payment,

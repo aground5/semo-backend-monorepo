@@ -2,10 +2,14 @@ package http
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
+	dbRepo "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/repository"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/entity"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/model"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/provider"
 	domainRepo "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/repository"
 	providerFactory "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/provider"
@@ -19,20 +23,27 @@ type ProductHandler struct {
 	productUseCase      *usecase.ProductUseCase
 	providerFactory     *providerFactory.Factory
 	customerMappingRepo domainRepo.CustomerMappingRepository
+	planRepo            dbRepo.PlanRepository
 	logger              *zap.Logger
 }
+
+var (
+	errPlanNotFound = errors.New("plan not found")
+)
 
 // NewProductHandler creates a new ProductHandler instance
 func NewProductHandler(
 	productUseCase *usecase.ProductUseCase,
 	providerFactory *providerFactory.Factory,
 	customerMappingRepo domainRepo.CustomerMappingRepository,
+	planRepo dbRepo.PlanRepository,
 	logger *zap.Logger,
 ) *ProductHandler {
 	return &ProductHandler{
 		productUseCase:      productUseCase,
 		providerFactory:     providerFactory,
 		customerMappingRepo: customerMappingRepo,
+		planRepo:            planRepo,
 		logger:              logger,
 	}
 }
@@ -209,11 +220,56 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 		h.ensureProviderCustomerMapping(ctx, providerStr, universalID, req.CustomerKey, metadataEmail)
 	}
 
+	currency := strings.ToUpper(req.Currency)
+	if req.PlanID != "" && h.planRepo != nil {
+		planCurrency, err := h.resolvePlanCurrency(ctx, req.PlanID)
+		if err != nil {
+			if errors.Is(err, errPlanNotFound) {
+				h.logger.Warn("Plan ID not found",
+					zap.String("plan_id", req.PlanID))
+				return c.JSON(http.StatusBadRequest, echo.Map{
+					"error": "Invalid plan_id",
+					"code":  "PLAN_NOT_FOUND",
+				})
+			}
+
+			h.logger.Error("Failed to resolve plan currency",
+				zap.String("plan_id", req.PlanID),
+				zap.Error(err))
+			return c.JSON(http.StatusInternalServerError, echo.Map{
+				"error": "Failed to resolve plan information",
+				"code":  "PLAN_RESOLUTION_FAILED",
+			})
+		}
+
+		if planCurrency == "" {
+			h.logger.Warn("Plan currency missing; rejecting request",
+				zap.String("plan_id", req.PlanID))
+			return c.JSON(http.StatusBadRequest, echo.Map{
+				"error": "Selected plan has no currency configuration",
+				"code":  "PLAN_CURRENCY_MISSING",
+			})
+		}
+
+		if currency != "" && !strings.EqualFold(currency, planCurrency) {
+			h.logger.Warn("Plan currency mismatch",
+				zap.String("plan_id", req.PlanID),
+				zap.String("request_currency", currency),
+				zap.String("plan_currency", planCurrency))
+			return c.JSON(http.StatusBadRequest, echo.Map{
+				"error": "Plan currency mismatch",
+				"code":  "PLAN_CURRENCY_MISMATCH",
+			})
+		}
+
+		currency = planCurrency
+	}
+
 	// Create payment request
 	usecaseReq := &usecase.CreateProductRequest{
 		UniversalID: universalID,
 		Amount:      req.Amount,
-		Currency:    req.Currency,
+		Currency:    currency,
 		OrderName:   req.OrderName,
 		CustomerKey: req.CustomerKey,
 		PlanID:      req.PlanID,
@@ -238,6 +294,41 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 		zap.String("provider", providerStr))
 
 	return c.JSON(http.StatusCreated, resp)
+}
+
+func (h *ProductHandler) resolvePlanCurrency(ctx context.Context, planID string) (string, error) {
+	if planID == "" || h.planRepo == nil {
+		return "", nil
+	}
+
+	plan, err := h.planRepo.GetByPriceID(ctx, planID)
+	if err != nil {
+		return "", err
+	}
+	if plan == nil {
+		return "", errPlanNotFound
+	}
+
+	return extractCurrencyFromPlan(plan), nil
+}
+
+func extractCurrencyFromPlan(plan *model.PaymentPlan) string {
+	if plan == nil {
+		return ""
+	}
+	if plan.Currency != "" {
+		return strings.ToUpper(plan.Currency)
+	}
+
+	if plan.Features != nil {
+		if priceMap, ok := plan.Features["price"].(map[string]interface{}); ok {
+			if currency, ok := priceMap["currency"].(string); ok {
+				return strings.ToUpper(currency)
+			}
+		}
+	}
+
+	return ""
 }
 
 // ConfirmProductRequest represents the HTTP request for confirming a payment
