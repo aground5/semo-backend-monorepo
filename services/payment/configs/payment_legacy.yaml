@@ -3,21 +3,20 @@ service:
   environment: development
   version: v1.0.0
   client_urls:
-    - http://localhost:3000
-    - http://localhost:5173
+    - ${CLIENT_URL}
   stripe_secret_key: sk_test_51Rm2eW4GnsDXmW0CL5ya0YEQU9ZmPZTNoqU1fjuqa38yuHsRwJKEXd8QDnIsYZ5MpWQrcuOdzj3Ir3X029M0UKd900MTaOKsqG
   stripe_webhook_secret: whsec_1774bf4416f0ef25a8f398e5d5c21f36f29ab921366993396ad8a2f8b9623aa0
   enable_test_endpoints: true
   toss:
-    secret_key: test_sk_QbgMGZzorz5JWj0R4jPPVl5E1em4
-    client_key: test_ck_GePWvyJnrKJwX0DWaJAOVgLzN97E
-    plans_file: ./configs/toss_plans.yaml
-    usd_plans_file: ./configs/toss_plans_usd.yaml
+    secret_key: ${PAYMENT_TOSS_SECRET_KEY}
+    client_key: ${PAYMENT_TOSS_CLIENT_KEY}
+    plans_file: ${PAYMENT_TOSS_PLANS_FILE}
+    usd_plans_file: ${PAYMENT_TOSS_PLANS_USD_FILE}
   supabase:
-    jwt_secret: Bhbu6ZNLzeETDhXy6XB6ssKzDDM4amES619RFLc4WhjGr783oq/uhLrWCnib5/uoZwbmn9SrTrUomSNpWMwuaA==
-    project_url: https://fjctbfwohrqdmrdyqbig.supabase.co
+    jwt_secret: ${SUPABASE_JWT_SECRET}
+    project_url: ${SUPABASE_PROJECT_URL}
     # Using service_role key for server-side workspace verification
-    api_key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqY3RiZndvaHJxZG1yZHlxYmlnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTg5MTQzMSwiZXhwIjoyMDY3NDY3NDMxfQ.HWa98PbqZIDZmiWsjGMiy06lPTHH2zYpnm43Xzr_JD0
+    api_key: ${SUPABASE_API_KEY}
 
 server:
   http:
@@ -38,4 +37,4 @@ database:
   url: ${DATABASE_URL}
 
 webhook_semolens:
-  secret: 1d6bc6252a18e1208afb28f1c6b00cecdb720d45504a3e389e799729c2971710
+  secret: ${SEMOLENS_WEBHOOK}
