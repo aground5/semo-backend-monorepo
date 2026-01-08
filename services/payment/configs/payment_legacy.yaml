@@ -35,7 +35,7 @@ jwt:
   secret:
 
 database:
-  url: postgresql://REMOVED_USER:REMOVED_PASS@localhost:5432/REMOVED_DB
+  url: ${DATABASE_URL}
 
 webhook_semolens:
   secret: REMOVED_WEBHOOK_SECRET
