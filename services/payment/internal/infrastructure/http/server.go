@@ -133,8 +133,10 @@ func (s *Server) setupRoutes() {
 		} else {
 			billingService := usecase.NewBillingService(
 				s.repos.BillingKey,
+				s.repos.Payment,
 				billingTossProvider,
 				encryptService,
+				creditService,
 				s.logger,
 			)
 			billingHandler = handlers.NewBillingHandler(billingService, s.logger)
@@ -197,6 +199,7 @@ func (s *Server) setupRoutes() {
 	if billingHandler != nil {
 		billing := protected.Group("/billing")
 		billing.POST("/issue", billingHandler.IssueBillingKey)
+		billing.POST("/charge", billingHandler.ChargeBillingKey)
 		billing.GET("/cards", billingHandler.GetCards)
 		billing.DELETE("/cards/:id", billingHandler.DeactivateCard)
 	}
