@@ -148,3 +148,78 @@ func (h *BillingHandler) DeactivateCard(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "deactivated"})
 }
+
+type chargeBillingKeyRequest struct {
+	BillingKeyID    int64  `json:"billing_key_id" validate:"required"`
+	Amount          int64  `json:"amount" validate:"required,gt=0"`
+	OrderName       string `json:"order_name" validate:"required"`
+	PlanID          string `json:"plan_id" validate:"required"`
+	ServiceProvider string `json:"service_provider"`
+}
+
+type chargeBillingKeyResponse struct {
+	OrderID          string `json:"order_id"`
+	PaymentKey       string `json:"payment_key"`
+	TransactionKey   string `json:"transaction_key"`
+	Status           string `json:"status"`
+	Amount           int64  `json:"amount"`
+	ApprovedAt       string `json:"approved_at,omitempty"`
+	CreditsAllocated int    `json:"credits_allocated"`
+}
+
+// ChargeBillingKey handles POST /api/v1/billing/charge
+func (h *BillingHandler) ChargeBillingKey(c echo.Context) error {
+	universalIDStr, ok := c.Get("universal_id").(string)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized"})
+	}
+
+	universalID, err := uuid.Parse(universalIDStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid user ID"})
+	}
+
+	var req chargeBillingKeyRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request body"})
+	}
+
+	if err := c.Validate(req); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{
+			"error":   "validation failed",
+			"details": err.Error(),
+		})
+	}
+
+	result, err := h.billingService.ChargeBillingKey(
+		c.Request().Context(),
+		universalID,
+		req.BillingKeyID,
+		req.Amount,
+		req.OrderName,
+		req.PlanID,
+		req.ServiceProvider,
+		c.RealIP(),
+		c.Request().UserAgent(),
+	)
+	if err != nil {
+		h.logger.Error("failed to charge billing key",
+			zap.Int64("billing_key_id", req.BillingKeyID),
+			zap.Error(err))
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	resp := chargeBillingKeyResponse{
+		OrderID:          result.OrderID,
+		PaymentKey:       result.PaymentKey,
+		TransactionKey:   result.TransactionKey,
+		Status:           result.Status,
+		Amount:           result.Amount,
+		CreditsAllocated: result.CreditsAllocated,
+	}
+	if result.ApprovedAt != nil {
+		resp.ApprovedAt = result.ApprovedAt.Format(time.RFC3339)
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
