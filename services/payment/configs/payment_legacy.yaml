@@ -3,20 +3,23 @@ service:
   environment: development
   version: v1.0.0
   client_urls:
-    - ${CLIENT_URL}
+    - http://localhost:3000
+    - http://localhost:5173
   stripe_secret_key: sk_test_51Rm2eW4GnsDXmW0CL5ya0YEQU9ZmPZTNoqU1fjuqa38yuHsRwJKEXd8QDnIsYZ5MpWQrcuOdzj3Ir3X029M0UKd900MTaOKsqG
   stripe_webhook_secret: whsec_1774bf4416f0ef25a8f398e5d5c21f36f29ab921366993396ad8a2f8b9623aa0
   enable_test_endpoints: true
   toss:
-    secret_key: ${PAYMENT_TOSS_SECRET_KEY}
-    client_key: ${PAYMENT_TOSS_CLIENT_KEY}
-    plans_file: ${PAYMENT_TOSS_PLANS_FILE}
-    usd_plans_file: ${PAYMENT_TOSS_PLANS_USD_FILE}
+    secret_key: test_gsk_ex6BJGQOVDP9aykmGjMBVW4w2zNb
+    client_key: test_gck_Poxy1XQL8RabPnEmneeNr7nO5Wml
+    billing_secret_key: test_sk_LlDJaYngroGv591jq2OlrezGdRpX
+    plans_file: ./configs/toss_plans.yaml
+    usd_plans_file: ./configs/toss_plans_usd.yaml
+    encryption_key: 888ad6dff7e96ffed2bfc2a924450bf7e4c25c393bc2b0169b9c05ab3dc208cd
   supabase:
-    jwt_secret: ${SUPABASE_JWT_SECRET}
-    project_url: ${SUPABASE_PROJECT_URL}
+    jwt_secret: Bhbu6ZNLzeETDhXy6XB6ssKzDDM4amES619RFLc4WhjGr783oq/uhLrWCnib5/uoZwbmn9SrTrUomSNpWMwuaA==
+    project_url: https://fjctbfwohrqdmrdyqbig.supabase.co
     # Using service_role key for server-side workspace verification
-    api_key: ${SUPABASE_API_KEY}
+    api_key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqY3RiZndvaHJxZG1yZHlxYmlnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTg5MTQzMSwiZXhwIjoyMDY3NDY3NDMxfQ.HWa98PbqZIDZmiWsjGMiy06lPTHH2zYpnm43Xzr_JD0
 
 server:
   http:
@@ -34,7 +37,7 @@ jwt:
   secret:
 
 database:
-  url: ${DATABASE_URL}
+  url: postgresql://myuser:postgresql@localhost:5432/mydatabase
 
 webhook_semolens:
-  secret: ${SEMOLENS_WEBHOOK}
+  secret: 1d6bc6252a18e1208afb28f1c6b00cecdb720d45504a3e389e799729c2971710

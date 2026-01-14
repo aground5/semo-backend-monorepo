@@ -12,8 +12,10 @@ import (
 	handlers "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/adapter/handler/http"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/config"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/domain/model"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/crypto"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/database"
 	providerFactory "github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/provider"
+	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/infrastructure/provider/toss"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/middleware/auth"
 	"github.com/wekeepgrowing/semo-backend-monorepo/services/payment/internal/usecase"
 	"go.uber.org/zap"
@@ -115,6 +117,33 @@ func (s *Server) setupRoutes() {
 		s.config.Webhook.Secret,
 	)
 
+	// Initialize billing service and handler
+	// 빌링은 API 개별 연동용 시크릿 키(billing_secret_key)를 사용해야 함
+	var billingHandler *handlers.BillingHandler
+	if s.config.Service.Toss.EncryptionKey != "" && s.config.Service.Toss.BillingSecretKey != "" {
+		billingTossProvider := toss.NewTossProvider(
+			s.config.Service.Toss.BillingSecretKey, // API 개별 연동용 시크릿 키
+			s.config.Service.Toss.ClientKey,
+			s.logger,
+		)
+		encryptService, err := crypto.NewAESEncryptionService(s.config.Service.Toss.EncryptionKey)
+		if err != nil {
+			s.logger.Warn("Failed to initialize encryption service, billing endpoints disabled",
+				zap.Error(err))
+		} else {
+			billingService := usecase.NewBillingService(
+				s.repos.BillingKey,
+				billingTossProvider,
+				encryptService,
+				s.logger,
+			)
+			billingHandler = handlers.NewBillingHandler(billingService, s.logger)
+			s.logger.Info("Billing service initialized with API individual integration key")
+		}
+	} else if s.config.Service.Toss.BillingSecretKey == "" {
+		s.logger.Warn("Billing secret key not configured, billing endpoints disabled")
+	}
+
 	// JWT middleware configuration
 	jwtConfig := auth.JWTConfig{
 		Secret:                       s.config.Service.Supabase.JWTSecret,
@@ -163,6 +192,14 @@ func (s *Server) setupRoutes() {
 	protected.GET("/credits", creditHandler.GetUserCredits)
 	protected.POST("/credits", creditHandler.UseCredits)
 	protected.GET("/credits/transactions", creditHandler.GetTransactionHistory)
+
+	// Billing routes (require authentication)
+	if billingHandler != nil {
+		billing := protected.Group("/billing")
+		billing.POST("/issue", billingHandler.IssueBillingKey)
+		billing.GET("/cards", billingHandler.GetCards)
+		billing.DELETE("/cards/:id", billingHandler.DeactivateCard)
+	}
 
 	// Internal/Debug routes
 	internal := v1.Group("/internal")
