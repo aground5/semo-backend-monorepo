@@ -37,9 +37,11 @@ type SupabaseConfig struct {
 }
 
 type TossConfig struct {
-	SecretKey     string `yaml:"secret_key"`
-	ClientKey     string `yaml:"client_key"`
-	WebhookSecret string `yaml:"webhook_secret"`
-	PlansFile     string `yaml:"plans_file"`
-	USDPlansFile  string `yaml:"usd_plans_file"`
+	SecretKey        string `yaml:"secret_key"`
+	ClientKey        string `yaml:"client_key"`
+	BillingSecretKey string `yaml:"billing_secret_key"` // API 개별 연동용 시크릿 키 (빌링)
+	WebhookSecret    string `yaml:"webhook_secret"`
+	PlansFile        string `yaml:"plans_file"`
+	USDPlansFile     string `yaml:"usd_plans_file"`
+	EncryptionKey    string `yaml:"encryption_key"`
 }

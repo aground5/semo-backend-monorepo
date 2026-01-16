@@ -109,3 +109,39 @@ func (e *ProviderError) Error() string {
 	}
 	return e.Message
 }
+
+// BillingProvider defines the interface for billing (recurring payment) operations
+type BillingProvider interface {
+	IssueBillingKey(ctx context.Context, req *IssueBillingKeyRequest) (*IssueBillingKeyResponse, error)
+	ChargeBillingKey(ctx context.Context, req *ChargeBillingKeyRequest) (*ChargeBillingKeyResponse, error)
+}
+
+type IssueBillingKeyRequest struct {
+	AuthKey     string `json:"authKey"`
+	CustomerKey string `json:"customerKey"`
+}
+
+type IssueBillingKeyResponse struct {
+	BillingKey  string `json:"billingKey"`
+	CustomerKey string `json:"customerKey"`
+	CardCompany string `json:"cardCompany"`
+	CardNumber  string `json:"cardNumber"`
+	CardType    string `json:"cardType"`
+}
+
+type ChargeBillingKeyRequest struct {
+	BillingKey  string `json:"billingKey"`
+	CustomerKey string `json:"customerKey"`
+	Amount      int64  `json:"amount"`
+	OrderID     string `json:"orderId"`
+	OrderName   string `json:"orderName"`
+}
+
+type ChargeBillingKeyResponse struct {
+	PaymentKey     string     `json:"paymentKey"`
+	OrderID        string     `json:"orderId"`
+	Status         string     `json:"status"`
+	Amount         int64      `json:"totalAmount"`
+	ApprovedAt     *time.Time `json:"approvedAt"`
+	TransactionKey string     `json:"transactionKey"`
+}
