@@ -18,6 +18,7 @@ type Repositories struct {
 	Webhook               repository.WebhookRepository
 	Plan                  repository.PlanRepository
 	WorkspaceVerification domainRepo.WorkspaceVerificationRepository
+	BillingKey            domainRepo.BillingKeyRepository
 }
 
 // NewRepositories creates new repository instances with database connection
@@ -45,5 +46,6 @@ func NewRepositories(db *gorm.DB, supabaseConfig *config.SupabaseConfig, logger 
 		Webhook:               repository.NewWebhookRepository(db, logger),
 		Plan:                  repository.NewPlanRepository(db, logger),
 		WorkspaceVerification: workspaceVerificationRepo,
+		BillingKey:            repository.NewBillingKeyRepository(db, logger),
 	}
 }

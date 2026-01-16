@@ -60,3 +60,128 @@ plans:
         - 디자인 개선 제안 패키지
     sort_order: 10
     is_active: true
+
+  # === 구독형 플랜 (Subscription) ===
+
+  # Pro 월간
+  - provider_price_id: toss_price_sub_pro_monthly
+    provider_product_id: toss_prod_sub_pro
+    pg_provider: toss
+    currency: KRW
+    display_name: SEMO Pro 월간 구독
+    type: subscription
+    credits_per_cycle: 100
+    features:
+      description: Pro 월간 구독
+      price:
+        amount: 48900
+        currency: KRW
+        interval: month
+        interval_count: 1
+      summary:
+        title: Pro
+        subtitle: (월간)
+        tagline: 전문적인 분석이 필요한 팀을 위한 플랜
+      badges:
+        - kind: recommendation
+          label: 추천
+      cta:
+        label: Pro 구독 시작하기
+      benefits:
+        - 월 100회 분석
+        - 모든 기능 무제한
+        - 우선 지원
+    sort_order: 100
+    is_active: true
+
+  # Pro 연간
+  - provider_price_id: toss_price_sub_pro_yearly
+    provider_product_id: toss_prod_sub_pro
+    pg_provider: toss
+    currency: KRW
+    display_name: SEMO Pro 연간 구독
+    type: subscription
+    credits_per_cycle: 1200
+    features:
+      description: Pro 연간 구독 (49% 할인)
+      price:
+        amount: 300000
+        currency: KRW
+        interval: year
+        interval_count: 1
+        monthly_equivalent: 25000
+      summary:
+        title: Pro
+        subtitle: (연간)
+        tagline: 전문적인 분석이 필요한 팀을 위한 플랜
+      badges:
+        - kind: savings
+          label: 49% 할인
+        - kind: recommendation
+          label: 추천
+      cta:
+        label: Pro 연간 구독 시작하기
+      benefits:
+        - 연 1200회 분석
+        - 모든 기능 무제한
+        - 우선 지원
+    sort_order: 101
+    is_active: true
+
+  # Starter 월간
+  - provider_price_id: toss_price_sub_starter_monthly
+    provider_product_id: toss_prod_sub_starter
+    pg_provider: toss
+    currency: KRW
+    display_name: SEMO Starter 월간 구독
+    type: subscription
+    credits_per_cycle: 30
+    features:
+      description: Starter 월간 구독
+      price:
+        amount: 28900
+        currency: KRW
+        interval: month
+        interval_count: 1
+      summary:
+        title: Starter
+        subtitle: (월간)
+        tagline: 시작하는 팀을 위한 합리적인 플랜
+      cta:
+        label: Starter 구독 시작하기
+      benefits:
+        - 월 30회 분석
+        - 기본 기능 제공
+    sort_order: 110
+    is_active: true
+
+  # Starter 연간
+  - provider_price_id: toss_price_sub_starter_yearly
+    provider_product_id: toss_prod_sub_starter
+    pg_provider: toss
+    currency: KRW
+    display_name: SEMO Starter 연간 구독
+    type: subscription
+    credits_per_cycle: 360
+    features:
+      description: Starter 연간 구독 (28% 할인)
+      price:
+        amount: 250000
+        currency: KRW
+        interval: year
+        interval_count: 1
+        monthly_equivalent: 20833
+      summary:
+        title: Starter
+        subtitle: (연간)
+        tagline: 시작하는 팀을 위한 합리적인 플랜
+      badges:
+        - kind: savings
+          label: 28% 할인
+      cta:
+        label: Starter 연간 구독 시작하기
+      benefits:
+        - 연 360회 분석
+        - 기본 기능 제공
+    sort_order: 111
+    is_active: true
