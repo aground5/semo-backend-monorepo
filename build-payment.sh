@@ -12,10 +12,19 @@ cd "$SCRIPT_DIR"
 # 빌드 출력 디렉토리
 BUILD_DIR="buildfile"
 
+# Railway 배포용 바이너리 빌드 타겟 (필요 시 환경변수로 오버라이드)
+TARGET_OS="${TARGET_OS:-linux}"
+TARGET_ARCH="${TARGET_ARCH:-amd64}"
+CGO_ENABLED="${CGO_ENABLED:-0}"
+
 # 빌드 디렉토리가 없으면 생성
 mkdir -p "$BUILD_DIR"
 
 echo "=== Payment 서비스 빌드 시작 ==="
+echo "Target: ${TARGET_OS}/${TARGET_ARCH} (CGO_ENABLED=${CGO_ENABLED})"
+
+# 기존 빌드 산출물 제거
+rm -f "$BUILD_DIR/payment-server" "$BUILD_DIR/payment-sync"
 
 # 빌드 정보
 VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
@@ -31,12 +40,14 @@ echo ""
 
 # payment-server 빌드
 echo "[1/2] Building payment-server..."
-go build -ldflags "$LDFLAGS" -o "$BUILD_DIR/payment-server" ./services/payment/cmd/server/main.go
+GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" CGO_ENABLED="$CGO_ENABLED" \
+	go build -ldflags "$LDFLAGS" -o "$BUILD_DIR/payment-server" ./services/payment/cmd/server
 echo "✓ payment-server 빌드 완료"
 
 # payment-sync 빌드
 echo "[2/2] Building payment-sync..."
-go build -ldflags "$LDFLAGS" -o "$BUILD_DIR/payment-sync" ./services/payment/cmd/sync-plans/main.go
+GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" CGO_ENABLED="$CGO_ENABLED" \
+	go build -ldflags "$LDFLAGS" -o "$BUILD_DIR/payment-sync" ./services/payment/cmd/sync-plans
 echo "✓ payment-sync 빌드 완료"
 
 echo ""
